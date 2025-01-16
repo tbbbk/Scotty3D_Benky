@@ -58,6 +58,7 @@ Test test_a0_task2_problems_numerical("a0.task2.problems.numerical", []() {
         throw Test::error("The vector does not match the expected result.");
 });
 
+
 // A0T2: Problem 3
 // TODO: Vectors are variable length arrays of C++. What could possibly be going
 //       wrong with this simple code? Fix the code while using iterators to 
@@ -72,7 +73,7 @@ Test test_a0_task2_problems_vector("a0.task2.problems.vector", []() {
     }
 
     // Use iterator to grab the last element of the vector
-    int last_element = *one_to_ten.end();
+    int last_element = *(one_to_ten.end() - 1);
 
     // The last element is surely a 10... right?
     int expected = 10;
@@ -82,6 +83,7 @@ Test test_a0_task2_problems_vector("a0.task2.problems.vector", []() {
 		throw Test::error("The last element was not 10.");
 	}
 });
+
 
 // A0T2: Problem 4
 // TODO: We want to count how many times a number appears in all three vectors.
@@ -99,7 +101,7 @@ Test test_a0_task2_problems_boolean("a0.task2.problems.boolean", []() {
         for (size_t j = 0; j < vec2.size(); j++) {
             for (size_t k = 0; k < vec3.size(); k++) {
                 // Check if the numbers at indices i,j,k respectively are the same
-                if ((vec1.at(i) == vec2.at(j)) == vec3.at(k)) count++;
+                if (vec1.at(i) == vec2.at(j) && vec2.at(j) == vec3.at(k)) count++;
             }
         }
     }
