@@ -1,0 +1,27 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Debug Scotty3D",
+        "type": "cppvsdbg",  // 对于 Windows 系统，使用 cppvsdbg 调试器
+        "request": "launch",
+        "program": "${workspaceFolder}/Scotty3D.exe", // 可执行文件路径
+        "args": [], // 如果需要传递命令行参数，可以在这里指定
+        "stopAtEntry": false, // 是否在程序入口处暂停
+        "cwd": "${workspaceFolder}", // 工作目录
+        "environment": [],
+        "externalConsole": false, // 如果需要外部控制台输出，设置为 true
+        "MIMode": "gdb",
+        "setupCommands": [
+          {
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+          }
+        ],
+        "preLaunchTask": "", // 可以指定编译任务，如果你需要在调试前先构建项目
+        "postDebugTask": "" // 调试结束后可以指定任务
+      }
+    ]
+  }
+  
