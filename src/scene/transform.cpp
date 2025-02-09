@@ -1,5 +1,6 @@
 
 #include "transform.h"
+#include <iostream>
 
 Mat4 Transform::local_to_parent() const {
 	return Mat4::translate(translation) * rotation.to_mat() * Mat4::scale(scale);
@@ -13,7 +14,12 @@ Mat4 Transform::local_to_world() const {
 	// A1T1: local_to_world
 	//don't use Mat4::inverse() in your code.
 
-	return Mat4::I; //<-- wrong, but here so code will compile
+	// Have a parent or not?
+	if (auto parent_ptr = parent.lock()) {
+		return Mat4::I;
+	} else {
+		return Mat4::translate(translation) * rotation.to_mat() * Mat4::scale(scale);
+	}
 }
 
 Mat4 Transform::world_to_local() const {
