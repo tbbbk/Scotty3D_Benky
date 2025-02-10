@@ -101,4 +101,23 @@ Test test_a1_task1_world_to_local("a1.task1.world_to_local", []() {
 	}
 });
 
+Test test_a1_task1_world_to_local_recursive_ouput("a1.task1.w2l_recursive_ouput", []() {
+	TestHierarchy hierarchy;
+
+	Mat4 got = hierarchy.C->world_to_local();
+	Mat4 expected = Mat4{
+		0.125f, 0.0f, 0.0f, 0.0f,
+		0.0f, 0.125f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.125f, 0.0f,
+		-0.125f,-0.25f,-0.5f, 1.0f
+	};
+
+	info("Transform A's world_to_local:");
+	Test::print_matrix(hierarchy.A->world_to_local());
+	info("Transform B's world_to_local:");
+	Test::print_matrix(hierarchy.B->world_to_local());
+	info("Transform C's world_to_local:");
+	Test::print_matrix(hierarchy.C->world_to_local());
+});
+
 
