@@ -361,14 +361,50 @@ void Pipeline<p, P, flags>::rasterize_line(
 	// this function!
 	// The OpenGL specification section 3.5 may also come in handy.
 
-	{ // As a placeholder, draw a point in the middle of the line:
-		//(remove this code once you have a real implementation)
+	
+	// a point should always be the left one
+	if (va.fb_position.x > vb.fb_position.x) {
+		assert(false && "This part has not been implemented yet!");
+	}
+
+	float va_x = va.fb_position.x;
+	float va_y = va.fb_position.y;
+	float vb_x = vb.fb_position.x;
+	float vb_y = vb.fb_position.y;
+
+	auto draw_point = [&](const float x, const float y) {
 		Fragment mid;
-		mid.fb_position = (va.fb_position + vb.fb_position) / 2.0f;
+		float z = va.fb_position.z + ((x - va_x) / (vb_x - va_x + 0.000001f)) * (vb.fb_position.z - vb.fb_position.z);
+		mid.fb_position = Vec3(x, y, z);
 		mid.attributes = va.attributes;
 		mid.derivatives.fill(Vec2(0.0f, 0.0f));
 		emit_fragment(mid);
+	};
+
+	// horizontal
+	if (va_x == vb_x && va_y != vb_y) {
+		assert(false && "This part has not been implemented yet!");
+	} 
+	// vertical
+	else if (va_x != vb_x && va_y == vb_y) {
+		assert(false && "This part has not been implemented yet!");
 	}
+	// start point and end point are the same point
+	else if (va_x == vb_x && va_y == vb_y) {
+		throw std::runtime_error("Error: Start point and end point are the same!");
+	} 
+	// normal condition
+	else {
+		float eps = 0;
+		float y = va_y;
+		for (float x = va_x; x <=vb_x; x++) {
+			draw_point(x, y);
+			// TBC
+		}
+	}
+	
+	
+
 
 }
 

@@ -6,6 +6,7 @@
 #include <iomanip>
 #include <algorithm>
 #include <unordered_set>
+#include <iostream>
 
 using TestPipeline = Pipeline< PrimitiveType::Lines, Programs::Lambertian, Pipeline_Blend_Replace | Pipeline_Depth_Less | Pipeline_Interp_Flat >;
 
@@ -128,6 +129,13 @@ void check_line_covers(std::string const &desc, std::initializer_list< Vec2 > co
 		}
 	}
 	//use list-of-points version:
+	if (expected.size() == 0) {
+		std:: cout << "\nThere is nothing inside expected\n";
+	}
+	std::cout<<"\n";
+	for (const auto& vec : expected) {
+		std::cout << "(" << vec.x << ", " << vec.y << ")\n";
+	}	
 	check_line_covers(desc, line_strip, expected);
 }
 
