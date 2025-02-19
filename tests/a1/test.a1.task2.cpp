@@ -38,6 +38,10 @@ void check_line_covers(std::string const &desc, std::vector< Vec2 > const &line_
 			got.emplace(frag.fb_position.x, frag.fb_position.y);
 		});
 	}
+	// std::cout<<"DEBUG:"<<desc;
+	// for (auto point : got) {
+	// 	std::cout<<point.x<<" "<<point.y<<" ";
+	// }
 
 	std::vector< std::string > raster;
 
@@ -129,13 +133,13 @@ void check_line_covers(std::string const &desc, std::initializer_list< Vec2 > co
 		}
 	}
 	//use list-of-points version:
-	if (expected.size() == 0) {
-		std:: cout << "\nThere is nothing inside expected\n";
-	}
-	std::cout<<"\n";
-	for (const auto& vec : expected) {
-		std::cout << "(" << vec.x << ", " << vec.y << ")\n";
-	}	
+	// if (expected.size() == 0) {
+	// 	std:: cout << "\nThere is nothing inside expected\n";
+	// }
+	// std::cout<<"\n";
+	// for (const auto& vec : expected) {
+	// 	std::cout << "(" << vec.x << ", " << vec.y << ")\n";
+	// }	
 	check_line_covers(desc, line_strip, expected);
 }
 
@@ -143,6 +147,16 @@ void check_line_covers(std::string const &desc, std::initializer_list< Vec2 > co
 //entering/exiting diamond at (1,1):
 // only lines that *exit* the diamond should produce a fragment.
 
+
+// Test test_a1_task2_normal("a1.task2.diamond.normal", []() {
+// 	check_line_covers(
+// 		"line inside diamond (1,1)",
+// 		{ Vec2(1.5f, 1.25f), Vec2(2.25f, 2.5f) },
+// 		{"...",
+// 		 ".#.",
+// 		 "..."}
+// 	);
+// });
 
 Test test_a1_task2_diamond_inside("a1.task2.diamond.inside", []() {
 	check_line_covers(

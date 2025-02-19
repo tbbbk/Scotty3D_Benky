@@ -2,6 +2,8 @@
 #include "pipeline.h"
 
 #include <iostream>
+#include <unordered_set>
+#include <utility>
 
 #include "../lib/log.h"
 #include "../lib/mathlib.h"
@@ -348,6 +350,19 @@ void Pipeline<p, P, flags>::clip_triangle(
  *
  * If you wish to work in fixed point, check framebuffer.h for useful information about the framebuffer's dimensions.
  */
+
+
+namespace std {
+    template <>
+    struct hash<std::pair<float, float>> {
+        size_t operator()(const std::pair<float, float>& p) const {
+            size_t h1 = std::hash<float>{}(p.first);
+            size_t h2 = std::hash<float>{}(p.second);
+            return h1 ^ (h2 << 1);
+        }
+    };
+}
+
 template<PrimitiveType p, class P, uint32_t flags>
 void Pipeline<p, P, flags>::rasterize_line(
 	ClippedVertex const& va, ClippedVertex const& vb,
@@ -361,33 +376,67 @@ void Pipeline<p, P, flags>::rasterize_line(
 	// this function!
 	// The OpenGL specification section 3.5 may also come in handy.
 
-	
-	// a point should always be the left one
+	auto va_copy = va;
+	auto vb_copy = vb;
+	// Point A should always be the left one
 	if (va.fb_position.x > vb.fb_position.x) {
-		assert(false && "This part has not been implemented yet!");
+		std::swap(va_copy, vb_copy);
 	}
 
-	float va_x = va.fb_position.x;
-	float va_y = va.fb_position.y;
-	float vb_x = vb.fb_position.x;
-	float vb_y = vb.fb_position.y;
+	// define coordinates
+	float va_x = va_copy.fb_position.x;
+	float va_y = va_copy.fb_position.y;
+	float vb_x = vb_copy.fb_position.x;
+	float vb_y = vb_copy.fb_position.y;
 
 	auto draw_point = [&](const float x, const float y) {
 		Fragment mid;
-		float z = va.fb_position.z + ((x - va_x) / (vb_x - va_x + 0.000001f)) * (vb.fb_position.z - vb.fb_position.z);
+		float t = vb_x == va_x ? (x - va_x) / (vb_x - va_x) : (y - va_y) / (vb_y - va_y);
+		float z = (1 - t) * va_copy.fb_position.z + t * vb_copy.fb_position.z;
 		mid.fb_position = Vec3(x, y, z);
-		mid.attributes = va.attributes;
+		mid.attributes = va_copy.attributes;
 		mid.derivatives.fill(Vec2(0.0f, 0.0f));
 		emit_fragment(mid);
 	};
 
-	// horizontal
-	if (va_x == vb_x && va_y != vb_y) {
-		assert(false && "This part has not been implemented yet!");
-	} 
+	auto check_diamond = [&](const float p_x, const float p_y) {
+		float x = std::floor(p_x) + 0.5f;
+		float y = std::floor(p_y) + 0.5f;
+		// check top and right point
+		if ((p_x == x && p_y == y + 0.5) || (p_x == x + 0.5 && p_y == y)) {
+			return false;
+		} else if (abs(x - p_x) + abs(y - p_y) <= 0.5) {
+			return true;
+		}
+		return false;
+	};
+
+	std::unordered_set<std::pair<float, float>> raster_points;
+
 	// vertical
+	if (va_x == vb_x && va_y != vb_y) {
+		float y = va_y;
+		float x = va_x;
+		float direction = va_y < vb_y ? 1.0f : -1.0f;
+		while (true) {
+			raster_points.insert({std::floor(x) + 0.5f, std::floor(y) + 0.5f});
+			y += direction;
+			if ((direction == 1 && y >= vb_y) || (direction == -1 && y <= vb_y)) {
+				break;
+			}
+		}
+	} 
+	// horizontal
 	else if (va_x != vb_x && va_y == vb_y) {
-		assert(false && "This part has not been implemented yet!");
+		float y = va_y;
+		float x = va_x;
+		while (true) {
+			raster_points.insert({std::floor(x) + 0.5f, std::floor(y) + 0.5f});
+			x++;
+			if (x >= vb_x) {
+				break;
+			}
+		}
 	}
 	// start point and end point are the same point
 	else if (va_x == vb_x && va_y == vb_y) {
@@ -396,16 +445,65 @@ void Pipeline<p, P, flags>::rasterize_line(
 	// normal condition
 	else {
 		float eps = 0;
-		float y = va_y;
-		for (float x = va_x; x <=vb_x; x++) {
-			draw_point(x, y);
-			// TBC
+		float m = (vb_y - va_y) / (vb_x - va_x);	// slope
+		if (m == 1.0f) {
+			float e = 0.0001f;
+			va_x += e;
+			vb_x += e;
+			va_y += e * e;
+			vb_y += e * e;
+		}
+		
+		if (abs(m) <= 1) {
+			float y = va_y;
+			for (float x = va_x; x <=vb_x; x++) {
+				// check the diamond
+				if (check_diamond(x, y)) {
+					raster_points.insert({std::floor(x) + 0.5f, std::floor(y) + 0.5f});
+				}
+				eps += m;
+				if (m >= 0 && eps > 0.5) {
+					y++;
+					eps--;
+				} else if (m < 0 && eps < -0.5) {
+					y--;
+					eps++;
+				}
+				
+			}
+		} else {
+			float x = va_x;
+			for (float y = va_y; y <=vb_y; y++) {
+				// check the diamond
+				if (check_diamond(x, y)) {
+					raster_points.insert({std::floor(x) + 0.5f, std::floor(y) + 0.5f});
+				}
+				eps += 1 / m;
+				if (m >= 0 && eps > 0.5) {
+					x++;
+					eps--;
+				} else if (m < 0 && eps < -0.5) {
+					x--;
+					eps++;
+				}
+				
+			}
 		}
 	}
-	
-	
 
+	// remove the fragment of endpoint
+	if (check_diamond(vb_x, vb_y)) {
+		std::pair<float, float> last_point = {std::floor(vb_x) + 0.5f, std::floor(vb_y) + 0.5f};
+		auto it = raster_points.find(last_point);
+		if (it != raster_points.end()) {
+			raster_points.erase(it);
+		}
+	}
 
+	// draw all point
+	for (const auto& point : raster_points) {
+		draw_point(point.first, point.second);
+	}
 }
 
 /*
