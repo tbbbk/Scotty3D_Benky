@@ -555,7 +555,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 		// A1T3: flat triangles
 		// TODO: rasterize triangle (see block comment above this function).
 
-		// use the cross product to determine CCW or CW?
+		// use the cross product to determine CCW or CW
 		float cross_product = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y) - (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
 
 		bool CW;
@@ -563,7 +563,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 		else if (cross_product < 0) CW = true;	// CW
 		else return;							// degenerate triangle
 
-		// judge top left edfe
+		// judge top left edge
 		std::function<bool(const ClippedVertex&, const ClippedVertex&)> top_left_edge;
 
 		if (CW) {
@@ -580,7 +580,6 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 
 		auto check_in_triangle = [&](const Vec2& p) {
 			std::array<std::pair<ClippedVertex, ClippedVertex>, 3> edge_pairs = {{ {va, vb}, {vb, vc}, {vc, va} }};
-			bool in = false;
 			for (auto& pair : edge_pairs) {
 				ClippedVertex v1 = pair.first;
 				ClippedVertex v2 = pair.second;
@@ -589,26 +588,17 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 				float v2_x = v2.fb_position.x;
 				float v2_y = v2.fb_position.y;
 				cross_product = (v2_x - v1_x) * (p.y - v1_y) - (v2_y - v1_y) * (p.x - v1_x);
-	
+				bool in;
 				if (top_left_edge(v1, v2)) {
-					if (v1_x == v2_x) {				// vertical
-						in = p.x >= v1_x;
-					} else if (v1_y == v2_y) {		// horizontal 
-						in = p.y <= v1_y;
-					} else {
-						in = CW ? cross_product <= 0 : cross_product >= 0; 
-					}
+					in = CW ? cross_product <= 0 : cross_product >= 0; 
 				} else {
-					if (v1_x == v2_x) {				// vertical
-						in = p.x < v1_x;
-					} else if (v1_y == v2_y) {		// horizontal 
-						in = p.y > v1_y;
-					} else {
-						in = CW ? cross_product < 0 : cross_product > 0; 
-					}
+					in = CW ? cross_product < 0 : cross_product > 0;
+				}
+				if (!in) {
+					return in;
 				}
 			}
-			return in;
+			return true;
 		};
 
 		auto draw_point = [&](const float& x, const float& y) {
@@ -654,24 +644,18 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 			emit_fragment(frag);
 		};
 
-		
-		std::unordered_set<std::pair<float, float>> raster_points;
 
 		float min_x = std::floor((std::min(std::min(va.fb_position.x, vb.fb_position.x), vc.fb_position.x)));
 		float min_y = std::floor((std::min(std::min(va.fb_position.y, vb.fb_position.y), vc.fb_position.y)));
-		float max_x = std::floor((std::min(std::max(va.fb_position.x, vb.fb_position.x), vc.fb_position.x))) + 1;
-		float max_y = std::floor((std::min(std::max(va.fb_position.y, vb.fb_position.y), vc.fb_position.y))) + 1;
+		float max_x = std::floor((std::max(std::max(va.fb_position.x, vb.fb_position.x), vc.fb_position.x))) + 1;
+		float max_y = std::floor((std::max(std::max(va.fb_position.y, vb.fb_position.y), vc.fb_position.y))) + 1;
 
 		for (float x = min_x; x <= max_x; x++) {
 			for (float y =min_y; y <= max_y; y++) {
-				if (check_in_triangle(Vec2(x, y))) {
-					raster_points.insert({x + 0.5f, y + 0.5f});
+				if (check_in_triangle(Vec2(x + 0.5f, y + 0.5f))) {
+					draw_point(x + 0.5f, y + 0.5f);
 				}
 			}
-		}
-
-		for (auto point : raster_points) {
-			draw_point(point.first, point.second);
 		}
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Smooth) {
 		// A1T5: screen-space smooth triangles
