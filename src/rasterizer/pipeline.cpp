@@ -555,11 +555,124 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 		// A1T3: flat triangles
 		// TODO: rasterize triangle (see block comment above this function).
 
-		// As a placeholder, here's code that draws some lines:
-		//(remove this and replace it with a real solution)
-		Pipeline<PrimitiveType::Lines, P, flags>::rasterize_line(va, vb, emit_fragment);
-		Pipeline<PrimitiveType::Lines, P, flags>::rasterize_line(vb, vc, emit_fragment);
-		Pipeline<PrimitiveType::Lines, P, flags>::rasterize_line(vc, va, emit_fragment);
+		// use the cross product to determine CCW or CW?
+		float cross_product = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y) - (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
+
+		bool CW;
+		if (cross_product > 0) CW = false;		// CCW
+		else if (cross_product < 0) CW = true;	// CW
+		else return;							// degenerate triangle
+
+		// judge top left edfe
+		std::function<bool(const ClippedVertex&, const ClippedVertex&)> top_left_edge;
+
+		if (CW) {
+			top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
+				return v2.fb_position.y > v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x > v1.fb_position.x);
+			};
+		} else {
+			top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
+				return v2.fb_position.y < v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x < v1.fb_position.x);
+			};
+		}
+		
+
+
+		auto check_in_triangle = [&](const Vec2& p) {
+			std::array<std::pair<ClippedVertex, ClippedVertex>, 3> edge_pairs = {{ {va, vb}, {vb, vc}, {vc, va} }};
+			bool in = false;
+			for (auto& pair : edge_pairs) {
+				ClippedVertex v1 = pair.first;
+				ClippedVertex v2 = pair.second;
+				float v1_x = v1.fb_position.x;
+				float v1_y = v1.fb_position.y;
+				float v2_x = v2.fb_position.x;
+				float v2_y = v2.fb_position.y;
+				cross_product = (v2_x - v1_x) * (p.y - v1_y) - (v2_y - v1_y) * (p.x - v1_x);
+	
+				if (top_left_edge(v1, v2)) {
+					if (v1_x == v2_x) {				// vertical
+						in = p.x >= v1_x;
+					} else if (v1_y == v2_y) {		// horizontal 
+						in = p.y <= v1_y;
+					} else {
+						in = CW ? cross_product <= 0 : cross_product >= 0; 
+					}
+				} else {
+					if (v1_x == v2_x) {				// vertical
+						in = p.x < v1_x;
+					} else if (v1_y == v2_y) {		// horizontal 
+						in = p.y > v1_y;
+					} else {
+						in = CW ? cross_product < 0 : cross_product > 0; 
+					}
+				}
+			}
+			return in;
+		};
+
+		auto draw_point = [&](const float& x, const float& y) {
+			Fragment frag;
+			// interpolated z
+			auto area = [](const Vec2& p1, const Vec2& p2) {
+				return std::abs(p1.x * p2.y - p1.y * p2.x);
+			};
+
+			auto interpolate_z = [&](const Vec2& d) {
+				Vec2 a = Vec2(va.fb_position.x, va.fb_position.y);
+				Vec2 b = Vec2(vb.fb_position.x, vb.fb_position.y);
+				Vec2 c = Vec2(vc.fb_position.x, vc.fb_position.y);
+				float za = va.fb_position.z;
+				float zb = vb.fb_position.z;
+				float zc = vc.fb_position.z;
+				Vec2 ab = b - a;
+				Vec2 ac = c - a;
+				Vec2 ad = d - a;
+				Vec2 bc = c - b;
+				Vec2 bd = d - b;
+				Vec2 ca = a - c;
+				Vec2 cd = d - c;
+			
+				float area_abc = area(ab, ac);
+				float area_abd = area(ab, ad);
+				float area_acd = area(ac, ad);
+				float area_bcd = area(bc, bd);
+			
+				float lambda_a = area_bcd / area_abc;
+				float lambda_b = area_acd / area_abc;
+				float lambda_c = area_abd / area_abc;
+			
+				float z_d = lambda_a * za + lambda_b * zb + lambda_c * zc;
+			
+				return z_d;
+			};
+			
+			
+			frag.fb_position = Vec3(x, y, interpolate_z(Vec2(x, y)));
+			frag.attributes = va.attributes;
+			frag.derivatives.fill(Vec2(0.0f, 0.0f));
+			emit_fragment(frag);
+		};
+
+		
+		std::unordered_set<std::pair<float, float>> raster_points;
+
+		float min_x = std::floor((std::min(std::min(va.fb_position.x, vb.fb_position.x), vc.fb_position.x)));
+		float min_y = std::floor((std::min(std::min(va.fb_position.y, vb.fb_position.y), vc.fb_position.y)));
+		float max_x = std::floor((std::min(std::max(va.fb_position.x, vb.fb_position.x), vc.fb_position.x))) + 1;
+		float max_y = std::floor((std::min(std::max(va.fb_position.y, vb.fb_position.y), vc.fb_position.y))) + 1;
+
+		for (float x = min_x; x <= max_x; x++) {
+			for (float y =min_y; y <= max_y; y++) {
+				if (check_in_triangle(Vec2(x, y))) {
+					raster_points.insert({x + 0.5f, y + 0.5f});
+				}
+			}
+		}
+
+		for (auto point : raster_points) {
+			draw_point(point.first, point.second);
+		}
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Smooth) {
 		// A1T5: screen-space smooth triangles
 		// TODO: rasterize triangle (see block comment above this function).
