@@ -640,6 +640,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 			
 			frag.fb_position = Vec3(x, y, interpolate_z(Vec2(x, y)));
 			frag.attributes = va.attributes;
+			// Using flat interpolation, I don't need to calculate the derivatives :)
 			frag.derivatives.fill(Vec2(0.0f, 0.0f));
 			emit_fragment(frag);
 		};
