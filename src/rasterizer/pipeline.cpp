@@ -604,6 +604,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 		auto draw_point = [&](const float& x, const float& y) {
 			Fragment frag;
 			// interpolated z
+			// TODO: optimize this part. we calculate twice the area (when we calculate the cross product for half-plane test, we already calculated it)
 			auto area = [](const Vec2& p1, const Vec2& p2) {
 				return std::abs(p1.x * p2.y - p1.y * p2.x);
 			};
