@@ -808,22 +808,30 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 					frag.attributes[i] = ((va.attributes[i] * va.inv_w) * a + (vb.attributes[i] * vb.inv_w) * b + (vc.attributes[i] * vc.inv_w) * c) / inv_w_interpolated;
 				}
 				// NOTE: here use Cramer formula to get the derivatives
+				float inv_w_a = va.inv_w;
+				float inv_w_b = vb.inv_w;
+				float inv_w_c = vc.inv_w;
+				float dinv_w_dx = ((inv_w_b - inv_w_a) * (vc.fb_position.y - va.fb_position.y) - (inv_w_c - inv_w_a) * (vb.fb_position.y - va.fb_position.y)) / area;
+				float dinv_w_dy = ((inv_w_c - inv_w_a) * (vb.fb_position.x - va.fb_position.x) - (inv_w_b - inv_w_a) * (vc.fb_position.x - va.fb_position.x)) / area;
+
+				float inv_w = inv_w_interpolated;
+
 				for (int i = 0; i < frag.derivatives.size(); i++) {
-					float f_a = va.attributes[i];
-					float f_b = vb.attributes[i];
-					float f_c = vc.attributes[i];
-					// 先求 f_over_w 的导数
-					float d_f_over_w_dx = ((f_b / w_b - f_a / w_a) * (vc.y - va.y) - (f_c / w_c - f_a / w_a) * (vb.y - va.y)) / area;
-					float d_f_over_w_dy = ((f_c / w_c - f_a / w_a) * (vb.x - va.x) - (f_b / w_b - f_a / w_a) * (vc.x - va.x)) / area;
+					float fa = va.attributes[i] * va.inv_w;
+					float fb = vb.attributes[i] * vb.inv_w;
+					float fc = vc.attributes[i] * vc.inv_w;
 
-					// 再求 inv_w 的导数
-					float d_inv_w_dx = ((1 / w_b - 1 / w_a) * (vc.y - va.y) - (1 / w_c - 1 / w_a) * (vb.y - va.y)) / area;
-					float d_inv_w_dy = ((1 / w_c - 1 / w_a) * (vb.x - va.x) - (1 / w_b - 1 / w_a) * (vc.x - va.x)) / area;
+					float d_attr_over_w_dx = ((fb - fa) * (vc.fb_position.y - va.fb_position.y) - (fc - fa) * (vb.fb_position.y - va.fb_position.y)) / area;
+					float d_attr_over_w_dy = ((fc - fa) * (vb.fb_position.x - va.fb_position.x) - (fb - fa) * (vc.fb_position.x - va.fb_position.x)) / area;
 
-					float dfdx = ((f_b - f_a) * (vc.fb_position.y - va.fb_position.y) - (f_c - f_a) * (vb.fb_position.y - va.fb_position.y)) / area;
-					float dfdy = ((f_c - f_a) * (vb.fb_position.x - va.fb_position.x) - (f_b - f_a) * (vc.fb_position.x - va.fb_position.x)) / area;
+					float attr = frag.attributes[i];
+
+					float dfdx = (d_attr_over_w_dx - attr * dinv_w_dx) / inv_w;
+					float dfdy = (d_attr_over_w_dy - attr * dinv_w_dy) / inv_w;
+
 					frag.derivatives[i] = Vec2(dfdx, dfdy);
 				}
+
 				emit_fragment(frag);
 			}
 		}
