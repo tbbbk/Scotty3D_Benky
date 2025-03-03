@@ -144,6 +144,9 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 			// "Less" means the depth test passes when the new fragment has depth less than the stored depth.
 			// A1T4: Depth_Less
 			// TODO: implement depth test! We want to only emit fragments that have a depth less than the stored depth, hence "Depth_Less".
+			// if (f.fb_position.z >= fb_depth) {
+			// 	continue;
+			// }
 		} else {
 			static_assert((flags & PipelineMask_Depth) <= Pipeline_Depth_Always, "Unknown depth test flag.");
 		}
@@ -557,7 +560,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 
 		// use the cross product to determine CCW or CW
 		float cross_product = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y) - (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
-
+		const float area = std::abs(cross_product);
 		bool CW;
 		if (cross_product > 0) CW = false;		// CCW
 		else if (cross_product < 0) CW = true;	// CW
@@ -576,10 +579,9 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 			};
 		}
 		
-
-
-		auto check_in_triangle = [&](const Vec2& p) {
+		auto check_and_draw_point = [&](const Vec2& p) {
 			std::array<std::pair<ClippedVertex, ClippedVertex>, 3> edge_pairs = {{ {va, vb}, {vb, vc}, {vc, va} }};
+			std::vector<float> cross_products;
 			for (auto& pair : edge_pairs) {
 				ClippedVertex v1 = pair.first;
 				ClippedVertex v2 = pair.second;
@@ -587,7 +589,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 				float v1_y = v1.fb_position.y;
 				float v2_x = v2.fb_position.x;
 				float v2_y = v2.fb_position.y;
-				cross_product = (v2_x - v1_x) * (p.y - v1_y) - (v2_y - v1_y) * (p.x - v1_x);
+				float cross_product = (v2_x - v1_x) * (p.y - v1_y) - (v2_y - v1_y) * (p.x - v1_x);
 				bool in;
 				if (top_left_edge(v1, v2)) {
 					in = CW ? cross_product <= 0 : cross_product >= 0; 
@@ -595,51 +597,30 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 					in = CW ? cross_product < 0 : cross_product > 0;
 				}
 				if (!in) {
-					return in;
+					return;
 				}
+				cross_products.push_back(std::abs(cross_product));
 			}
-			return true;
-		};
-
-		auto draw_point = [&](const float& x, const float& y) {
-			Fragment frag;
-			// interpolated z
-			// TODO: optimize this part. we calculate twice the area (when we calculate the cross product for half-plane test, we already calculated it)
-			auto area = [](const Vec2& p1, const Vec2& p2) {
-				return std::abs(p1.x * p2.y - p1.y * p2.x);
-			};
+			// c -> a -> b
+			float c = cross_products[0] / area;
+			float a = cross_products[1] / area;
+			float b = cross_products[2] / area;
 
 			auto interpolate_z = [&](const Vec2& d) {
-				Vec2 a = Vec2(va.fb_position.x, va.fb_position.y);
-				Vec2 b = Vec2(vb.fb_position.x, vb.fb_position.y);
-				Vec2 c = Vec2(vc.fb_position.x, vc.fb_position.y);
 				float za = va.fb_position.z;
 				float zb = vb.fb_position.z;
 				float zc = vc.fb_position.z;
-				Vec2 ab = b - a;
-				Vec2 ac = c - a;
-				Vec2 ad = d - a;
-				Vec2 bc = c - b;
-				Vec2 bd = d - b;
-				Vec2 ca = a - c;
-				Vec2 cd = d - c;
-			
-				float area_abc = area(ab, ac);
-				float area_abd = area(ab, ad);
-				float area_acd = area(ac, ad);
-				float area_bcd = area(bc, bd);
-			
-				float lambda_a = area_bcd / area_abc;
-				float lambda_b = area_acd / area_abc;
-				float lambda_c = area_abd / area_abc;
-			
-				float z_d = lambda_a * za + lambda_b * zb + lambda_c * zc;
-			
+				float lambda_a = va.inv_w * a; // inv_w is (1/w)
+				float lambda_b = vb.inv_w * b;
+				float lambda_c = vc.inv_w * c;
+
+				float z_d = (lambda_a + lambda_b + lambda_c) / ((lambda_a / za) + (lambda_b / zb) + (lambda_c / zc));
 				return z_d;
 			};
-			
-			
-			frag.fb_position = Vec3(x, y, interpolate_z(Vec2(x, y)));
+
+			Fragment frag;
+			// interpolated z
+			frag.fb_position = Vec3(p.x, p.y, interpolate_z(Vec2(p.x, p.y)));
 			frag.attributes = va.attributes;
 			// Using flat interpolation, I don't need to calculate the derivatives :)
 			frag.derivatives.fill(Vec2(0.0f, 0.0f));
@@ -654,9 +635,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 
 		for (float x = min_x; x <= max_x; x++) {
 			for (float y =min_y; y <= max_y; y++) {
-				if (check_in_triangle(Vec2(x + 0.5f, y + 0.5f))) {
-					draw_point(x + 0.5f, y + 0.5f);
-				}
+				check_and_draw_point(Vec2(x + 0.5f, y + 0.5f));
 			}
 		}
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Smooth) {
