@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a1.task4.depth.less.25_50"
+                "a1.task4.depth.less.75_50"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
