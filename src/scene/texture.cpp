@@ -29,17 +29,30 @@ Spectrum sample_bilinear(HDR_Image const &image, Vec2 uv) {
 	float y = image.h * std::clamp(uv.y, 0.0f, 1.0f);
 
 	//the pixel with the nearest center is the pixel that contains (x,y):
-	int32_t ix = int32_t(std::floor(x));
-	int32_t iy = int32_t(std::floor(y));
+	// int32_t ix = int32_t(std::floor(x));
+	// int32_t iy = int32_t(std::floor(y));
 
-	ix = std::min(ix, int32_t(image.w) - 1);
-	iy = std::min(iy, int32_t(image.h) - 1);
+	// ix = std::min(ix, int32_t(image.w) - 1);
+	// iy = std::min(iy, int32_t(image.h) - 1);
 
 	int32_t x0 = (int32_t) std::floor(x - 0.5f);
 	int32_t y0 = (int32_t) std::floor(y - 0.5f);
 
 	int32_t x1 = (x0 != (int32_t)(image.w - 1)) ? x0 + 1 : x0;
 	int32_t y1 = (y0 != (int32_t)(image.h - 1)) ? y0 + 1 : y0;
+
+	if (x0 < 0) {
+		x0 += 1;
+		x1 = x0;
+	}
+
+	if (y0 < 0) {
+		y0 += 1;
+		y1 = y0;
+	}
+	
+	assert((uint32_t)(x0) < image.w && (uint32_t)(y0) < image.h);
+	assert((uint32_t)(x1) < image.w && (uint32_t)(y1) < image.h);
 
 	float s = x - (x0 + 0.5f);
 	float t = y - (y0 + 0.5f);
