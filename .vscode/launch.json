@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a1.task5.correct.simple.depth"
+                "a1.task6.sample.trilinear.simple"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

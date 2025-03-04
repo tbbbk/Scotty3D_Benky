@@ -808,6 +808,13 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 					frag.attributes[i] = ((va.attributes[i] * va.inv_w) * a + (vb.attributes[i] * vb.inv_w) * b + (vc.attributes[i] * vc.inv_w) * c) / inv_w_interpolated;
 				}
 				// NOTE: here use Cramer formula to get the derivatives
+				/*
+				f / w = Ax + By + C
+				1 / w = Dx + Ey + F
+				f = (f/w) / (1/w) = g / h
+				df/dx = d(g/h)/dx (remeber use g = fh to replace g)
+				
+				*/
 				float inv_w_a = va.inv_w;
 				float inv_w_b = vb.inv_w;
 				float inv_w_c = vc.inv_w;

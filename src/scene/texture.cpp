@@ -25,16 +25,64 @@ Spectrum sample_nearest(HDR_Image const &image, Vec2 uv) {
 Spectrum sample_bilinear(HDR_Image const &image, Vec2 uv) {
 	// A1T6: sample_bilinear
 	//TODO: implement bilinear sampling strategy on texture 'image'
+	float x = image.w * std::clamp(uv.x, 0.0f, 1.0f);
+	float y = image.h * std::clamp(uv.y, 0.0f, 1.0f);
 
-	return sample_nearest(image, uv); //placeholder so image doesn't look blank
+	//the pixel with the nearest center is the pixel that contains (x,y):
+	int32_t ix = int32_t(std::floor(x));
+	int32_t iy = int32_t(std::floor(y));
+
+	ix = std::min(ix, int32_t(image.w) - 1);
+	iy = std::min(iy, int32_t(image.h) - 1);
+
+	int32_t x0 = (int32_t) std::floor(x - 0.5f);
+	int32_t y0 = (int32_t) std::floor(y - 0.5f);
+
+	int32_t x1 = (x0 != (int32_t)(image.w - 1)) ? x0 + 1 : x0;
+	int32_t y1 = (y0 != (int32_t)(image.h - 1)) ? y0 + 1 : y0;
+
+	float s = x - (x0 + 0.5f);
+	float t = y - (y0 + 0.5f);
+
+	Spectrum f00 = image.at(x0, y0);
+	Spectrum f01 = image.at(x0, y1);
+	Spectrum f10 = image.at(x1, y0);
+	Spectrum f11 = image.at(x1, y1);
+
+	auto bottom = (1 - s) * f00 + s * f10;
+	auto top = (1 - s) * f01 + s * f11;
+
+	// For debug, I don't know why when I debug, vscode always told me that variables are optimized away :(
+	// std::cout << "\nx:" << x << ";y:" << y;
+	// std::cout << "\nx0:" << x0 << ";x1:" << x1;
+	// std::cout << "\ny0:" << y0 << ";y1:" << y1;
+	// std::cout << "\nf00:" << f00 << ";f01:" << f01;
+	// std::cout << "\nf10:" << f10 << ";f11:" << f11;
+	// std::cout << "\ns:" << s << ";t:" << t;
+
+	Spectrum bi_color = (1 - t) * bottom + t * top;
+	return bi_color; 
 }
 
 
 Spectrum sample_trilinear(HDR_Image const &base, std::vector< HDR_Image > const &levels, Vec2 uv, float lod) {
 	// A1T6: sample_trilinear
 	//TODO: implement trilinear sampling strategy on using mip-map 'levels'
+	
+	 
+	int level_low = (int) std::floor(lod);
+	const HDR_Image& image_low = (level_low == 0) ? base : levels[level_low - 1];
+	int level_high = (level_low != levels.size()) ? level_low + 1 : level_low;
+	const HDR_Image& image_high = (level_high == 0) ? base : levels[level_high - 1];
 
-	return sample_nearest(base, uv); //placeholder so image doesn't look blank
+	Spectrum color_low = sample_bilinear(image_low, uv);
+	Spectrum color_high = sample_bilinear(image_high, uv);
+
+	float w = lod - (float) level_low;
+
+	Spectrum tri_color = (1 - w) * color_low + w * color_high;
+
+	return tri_color; //placeholder so image doesn't look blank
 }
 
 /*
@@ -93,6 +141,28 @@ void generate_mipmap(HDR_Image const &base, std::vector< HDR_Image > *levels_) {
 
 		//Be aware that the alignment of the samples in dst and src will be different depending on whether the image is even or odd.
 
+		std::vector<std::vector<int>> count(dst.w, std::vector<int>(dst.h, 0));
+		for (unsigned int x = 0 ; x < src.w; x++) {
+			for (unsigned int y = 0; y < src.h; y++) {
+				int dst_x = x / 2u;
+				int dst_y = y / 2u;
+				if (x == src.w - 1 && x % 2 == 0 && src.w > 1) {
+					dst_x -= 1;
+				}
+				if (y == src.h - 1 && y % 2 ==0 && src.h > 1) {
+					dst_y -= 1;
+				}
+				dst.at(dst_x, dst_y) += src.at(x, y);
+				count[dst_x][dst_y] += 1;
+			}
+		}
+
+		// average
+		for (unsigned int x = 0 ; x < dst.w; x++) {
+			for (unsigned int y = 0; y < dst.h; y++) {
+				dst.at(x, y) = dst.at(x, y) / (float) count[x][y];
+			}
+		}
 	};
 
 	std::cout << "Regenerating mipmap (" << levels.size() << " levels): [" << base.w << "x" << base.h << "]";

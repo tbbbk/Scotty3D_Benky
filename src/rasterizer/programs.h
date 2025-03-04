@@ -122,8 +122,12 @@ struct Lambertian {
 		//  --> 'lod' is \lambda_base from equation (3.17)
 		// reading onward, you will discover that \rho can be computed in a number of ways
 		//  it is up to you to select one that makes sense in this context
-
-		float lod = 0.0f; //<-- replace this line
+		float L = std::max(
+			std::sqrt(std::pow(fd[FA_TexCoordU].x * wh.x, 2.0f) + std::pow(fd[FA_TexCoordV].x * wh.x, 2.0f)), 
+			std::sqrt(std::pow(fd[FA_TexCoordU].y * wh.y, 2.0f) + std::pow(fd[FA_TexCoordV].y * wh.y, 2.0f))
+		);
+		float lod = std::clamp(std::log2(L), 0.0f, INFINITY);
+		// float lod = 0.0f; //<-- replace this line
 		//-----
 
 		Vec3 normal = fa_normal.unit();
