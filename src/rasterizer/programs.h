@@ -126,6 +126,7 @@ struct Lambertian {
 			std::sqrt(std::pow(fd[FA_TexCoordU].x * wh.x, 2.0f) + std::pow(fd[FA_TexCoordV].x * wh.x, 2.0f)), 
 			std::sqrt(std::pow(fd[FA_TexCoordU].y * wh.y, 2.0f) + std::pow(fd[FA_TexCoordV].y * wh.y, 2.0f))
 		);
+		assert(L > .0f);
 		float lod = std::clamp(std::log2(L), 0.0f, INFINITY);
 		// float lod = 0.0f; //<-- replace this line
 		//-----

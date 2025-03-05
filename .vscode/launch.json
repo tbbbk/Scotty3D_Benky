@@ -7,8 +7,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
-                "--run-tests",
-                "a1.task6.sample.trilinear.simple"
+                // "--run-tests",
+                // "a1.task7.resolve"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

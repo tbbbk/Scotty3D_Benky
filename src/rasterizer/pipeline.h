@@ -132,11 +132,13 @@ struct Pipeline {
 	//rasterization uses one of these helper functions, depending on primitive type:
 	static void rasterize_line(
 		ClippedVertex const &a, ClippedVertex const &b, //line (a,b)
-		std::function< void(Fragment const &) > const &emit_fragment //call with every fragment covered by the line
+		std::function< void(Fragment const &) > const &emit_fragment, //call with every fragment covered by the line,
+		float const& super_sampleing_dx =.0f, float const& super_sampleing_dy =.0f
 	);
 	static void rasterize_triangle(
 		ClippedVertex const &a, ClippedVertex const &b, ClippedVertex const &c, //triangle (a,b,c)
-		std::function< void(Fragment const &) > const &emit_fragment //call with every fragment covered by the triangle
+		std::function< void(Fragment const &) > const &emit_fragment, //call with every fragment covered by the triangle
+		float const& super_sampleing_dx =.0f, float const& super_sampleing_dy =.0f // for super-sampling
 	);
 
 	//(7) tests fragment depths vs depth buffer (based on flags)
