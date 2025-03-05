@@ -133,6 +133,12 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 	// depth test + shade + blend fragments:
 	uint32_t out_of_range = 0; // check if rasterization produced fragments outside framebuffer 
 							   // (indicates something is wrong with clipping)
+	/*
+	Here we have a very big problem, not every fragment can generate samples.size() samples, which will cause bugs.
+
+	Benky TODO: Fix this bug. (But not now, life is short, enjoy my life.)
+	
+	*/
 	assert(fragments.size() % samples.size() == 0);
 	for (size_t i = 0; i < fragments.size() / samples.size(); i++) {
 		for (uint32_t s = 0; s < samples.size(); s++) {
@@ -816,17 +822,31 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 					continue;
 				}
 
+				// recalculate cross prodct
+				std::vector<float> sample_cross_products;
+				const Vec2 sample_point = Vec2(x + super_sampleing_dx, y + super_sampleing_dy);
+				for (auto& pair : edge_pairs) {
+					ClippedVertex v1 = pair.first;
+					ClippedVertex v2 = pair.second;
+					float v1_x = v1.fb_position.x;
+					float v1_y = v1.fb_position.y;
+					float v2_x = v2.fb_position.x;
+					float v2_y = v2.fb_position.y;
+					float p_cross_product = (v2_x - v1_x) * (sample_point.y - v1_y) - (v2_y - v1_y) * (sample_point.x - v1_x);
+					sample_cross_products.push_back(std::abs(p_cross_product));
+				}
+
 				Fragment frag;
 				// c -> a -> b
-				float c = cross_products[0] / area;
-				float a = cross_products[1] / area;
-				float b = cross_products[2] / area;
+				float c = sample_cross_products[0] / area;
+				float a = sample_cross_products[1] / area;
+				float b = sample_cross_products[2] / area;
 				// inv_w is (1 / w)
 				// interpolate (1 / w) 
 				float inv_w_interpolated = a * va.inv_w + b * vb.inv_w + c * vc.inv_w;
 				// interpolate z
 				float z_d = a * va.fb_position.z + b * vb.fb_position.z + c * vc.fb_position.z;
-				frag.fb_position = Vec3(point.x + super_sampleing_dx, point.y + super_sampleing_dy, z_d);
+				frag.fb_position = Vec3(sample_point.x + super_sampleing_dx, sample_point.y + super_sampleing_dy, z_d);
 				// interpolate (attri / w)
 				for (int i = 0; i < frag.attributes.size(); i++) {
 					frag.attributes[i] = ((va.attributes[i] * va.inv_w) * a + (vb.attributes[i] * vb.inv_w) * b + (vc.attributes[i] * vc.inv_w) * c) / inv_w_interpolated;
