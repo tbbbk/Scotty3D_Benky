@@ -99,6 +99,7 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 
 	// actually do rasterization:
 	std::vector<Vec3> const &samples = framebuffer.sample_pattern.centers_and_weights;
+	auto sample_ = samples;
 	if constexpr (primitive_type == PrimitiveType::Lines) {
 		for (uint32_t i = 0; i + 1 < clipped_vertices.size(); i += 2) {
 			for (uint32_t s = 0; s < samples.size(); ++s) {
@@ -113,17 +114,18 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 		}
 	} else if constexpr (primitive_type == PrimitiveType::Triangles) {
 		for (uint32_t i = 0; i + 2 < clipped_vertices.size(); i += 3) {
-			for (uint32_t s = 0; s < samples.size(); ++s) {
-				float dx = samples[s].x;
-				float dy = samples[s].y;
-				// ClippedVertex va = clipped_vertices[i];
-				// ClippedVertex vb = clipped_vertices[i + 1];
-				// ClippedVertex vc = clipped_vertices[i + 2];
-				// va.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
-				// vb.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
-				// vc.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
-				rasterize_triangle(clipped_vertices[i], clipped_vertices[i + 1], clipped_vertices[i + 2], emit_fragment, dx, dy);
-			}
+			rasterize_triangle(clipped_vertices[i], clipped_vertices[i + 1], clipped_vertices[i + 2], emit_fragment, sample_);
+			// for (uint32_t s = 0; s < samples.size(); ++s) {
+			// 	float dx = samples[s].x;
+			// 	float dy = samples[s].y;
+			// 	// ClippedVertex va = clipped_vertices[i];
+			// 	// ClippedVertex vb = clipped_vertices[i + 1];
+			// 	// ClippedVertex vc = clipped_vertices[i + 2];
+			// 	// va.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
+			// 	// vb.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
+			// 	// vc.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
+			// 	rasterize_triangle(clipped_vertices[i], clipped_vertices[i + 1], clipped_vertices[i + 2], emit_fragment, dx, dy);
+			// }
 		}
 	} else {
 		static_assert(primitive_type == PrimitiveType::Lines, "Unsupported primitive type.");
@@ -136,7 +138,6 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 	/*
 	Here we have a very big problem, not every fragment can generate samples.size() samples, which will cause bugs.
 
-	Benky TODO: Fix this bug. (But not now, life is short, enjoy my life.)
 	
 	*/
 	assert(fragments.size() % samples.size() == 0);
@@ -579,91 +580,130 @@ template<PrimitiveType p, class P, uint32_t flags>
 void Pipeline<p, P, flags>::rasterize_triangle(
 	ClippedVertex const& va, ClippedVertex const& vb, ClippedVertex const& vc,
 	std::function<void(Fragment const&)> const& emit_fragment,
-	float const& super_sampleing_dx, float const& super_sampleing_dy) {
+	// float const& super_sampleing_dx, float const& super_sampleing_dy) {
+	std::vector<Vec3> samples) {
 	// NOTE: it is okay to restructure this function to allow these tasks to use the
 	//  same code paths. Be aware, however, that all of them need to remain working!
 	//  (e.g., if you break Flat while implementing Correct, you won't get points
 	//   for Flat.)
-	if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
-		// A1T3: flat triangles
-		// TODO: rasterize triangle (see block comment above this function).
+	
+	// A1T3: flat triangles
+	// TODO: rasterize triangle (see block comment above this function).
 
-		// use the cross product to determine CCW or CW
-		float cross_product = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y) - (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
-		const float area = std::abs(cross_product);
-		bool CW;
-		if (cross_product > 0) CW = false;		// CCW
-		else if (cross_product < 0) CW = true;	// CW
-		else return;							// degenerate triangle
+	// use the cross product to determine CCW or CW
 
-		// judge top left edge
-		std::function<bool(const ClippedVertex&, const ClippedVertex&)> top_left_edge;
+	/**
+	 * Preparation
+	 */
+	if (samples.size() == 0) {
+		samples.push_back(Vec3(.5f, .5f, .0f));
+	}
+	float cross_product = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y) - (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
+	const float area = std::abs(cross_product);
+	bool CW;
+	if (cross_product > 0) CW = false;		// CCW
+	else if (cross_product < 0) CW = true;	// CW
+	else return;							// degenerate triangle
 
-		if (CW) {
-			top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
-				return v2.fb_position.y > v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x > v1.fb_position.x);
-			};
-		} else {
-			top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
-				return v2.fb_position.y < v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x < v1.fb_position.x);
-			};
+	// judge top left edge
+	std::function<bool(const ClippedVertex&, const ClippedVertex&)> top_left_edge;
+
+	if (CW) {
+		top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
+			return v2.fb_position.y > v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x > v1.fb_position.x);
+		};
+	} else {
+		top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
+			return v2.fb_position.y < v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x < v1.fb_position.x);
+		};
+	}
+	
+	float min_x = std::floor((std::min(std::min(va.fb_position.x, vb.fb_position.x), vc.fb_position.x)));
+	float min_y = std::floor((std::min(std::min(va.fb_position.y, vb.fb_position.y), vc.fb_position.y)));
+	float max_x = std::floor((std::max(std::max(va.fb_position.x, vb.fb_position.x), vc.fb_position.x))) + 1;
+	float max_y = std::floor((std::max(std::max(va.fb_position.y, vb.fb_position.y), vc.fb_position.y))) + 1;
+
+	/**
+	 * 
+	 * Judge whether in the triangle or not
+	 * 
+	 */
+	const std::array<std::pair<ClippedVertex, ClippedVertex>, 3> edge_pairs = {{ {va, vb}, {vb, vc}, {vc, va} }};
+	std::vector<float> cross_products; // remeber to clear it after use
+	auto in_triangle = [&](float x, float y){
+		const Vec2 point = Vec2(x, y);
+		for (auto& pair : edge_pairs) {
+			ClippedVertex v1 = pair.first;
+			ClippedVertex v2 = pair.second;
+			float v1_x = v1.fb_position.x;
+			float v1_y = v1.fb_position.y;
+			float v2_x = v2.fb_position.x;
+			float v2_y = v2.fb_position.y;
+			float p_cross_product = (v2_x - v1_x) * (point.y - v1_y) - (v2_y - v1_y) * (point.x - v1_x);
+			bool in;
+			if (top_left_edge(v1, v2)) {
+				in = CW ? p_cross_product <= 0 : p_cross_product >= 0; 
+			} else {
+				in = CW ? p_cross_product < 0 : p_cross_product > 0;
+			}
+			if (!in) {
+				continue;
+			} else {
+				cross_products.push_back(std::abs(p_cross_product));
+			}
 		}
 		
-		float min_x = std::floor((std::min(std::min(va.fb_position.x, vb.fb_position.x), vc.fb_position.x)));
-		float min_y = std::floor((std::min(std::min(va.fb_position.y, vb.fb_position.y), vc.fb_position.y)));
-		float max_x = std::floor((std::max(std::max(va.fb_position.x, vb.fb_position.x), vc.fb_position.x))) + 1;
-		float max_y = std::floor((std::max(std::max(va.fb_position.y, vb.fb_position.y), vc.fb_position.y))) + 1;
+		if (cross_products.size() != 3) {
+			return false;
+		} else {
+			return true;
+		}
+	};
 
+	if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 		for (float x = min_x; x <= max_x; x++) {
 			for (float y =min_y; y <= max_y; y++) {
-				std::array<std::pair<ClippedVertex, ClippedVertex>, 3> edge_pairs = {{ {va, vb}, {vb, vc}, {vc, va} }};
-				std::vector<float> cross_products;
-				const Vec2 point = Vec2(x + 0.5f, y + 0.5f);
-				for (auto& pair : edge_pairs) {
-					ClippedVertex v1 = pair.first;
-					ClippedVertex v2 = pair.second;
-					float v1_x = v1.fb_position.x;
-					float v1_y = v1.fb_position.y;
-					float v2_x = v2.fb_position.x;
-					float v2_y = v2.fb_position.y;
-					float p_cross_product = (v2_x - v1_x) * (point.y - v1_y) - (v2_y - v1_y) * (point.x - v1_x);
-					bool in;
-					if (top_left_edge(v1, v2)) {
-						in = CW ? p_cross_product <= 0 : p_cross_product >= 0; 
+				bool rasterize_or_not = false;
+				std::vector<Fragment> frags;
+				for (uint32_t s = 0; s < samples.size(); ++s) {
+					float super_sampleing_dx = samples[s].x;
+					float super_sampleing_dy = samples[s].y;
+					float sampled_x = x + super_sampleing_dx;
+					float sampled_y = y + super_sampleing_dy;		
+					Fragment frag;
+					if (in_triangle(sampled_x, sampled_y)) {
+						rasterize_or_not = true;	
+						// interpolated z
+						// c -> a -> b
+						float c = cross_products[0] / area;
+						float a = cross_products[1] / area;
+						float b = cross_products[2] / area;
+						float za = va.fb_position.z;
+						float zb = vb.fb_position.z;
+						float zc = vc.fb_position.z;
+						float z_d = a * za + b * zb + c * zc;
+						frag.fb_position = Vec3(sampled_x, sampled_y, z_d);
+						frag.attributes = va.attributes;
+						// Using flat interpolation, I don't need to calculate the derivatives :)
+						frag.derivatives.fill(Vec2(0.0f, 0.0f));
 					} else {
-						in = CW ? p_cross_product < 0 : p_cross_product > 0;
+						frag.fb_position = Vec3(sampled_x, sampled_y, 1.0f);
+						for (int i = 0; i < frag.attributes.size(); i++) {
+							frag.attributes[i] = .0f;
+						}
+						for (int i = 0; i < frag.derivatives.size(); i++) {
+							frag.derivatives[i] = Vec2(.0f, .0f);
+						}
 					}
-					if (!in) {
-						continue;
-					} else {
-						cross_products.push_back(std::abs(p_cross_product));
+					frags.push_back(frag);
+					cross_products.clear(); 
+				}
+				if (rasterize_or_not) {
+					for (auto frag : frags) {
+						emit_fragment(frag);
 					}
 				}
-				
-				if (cross_products.size() != 3) {
-					continue;
-				}
-
-				Fragment frag;
-				// interpolated z
-				// c -> a -> b
-				float c = cross_products[0] / area;
-				float a = cross_products[1] / area;
-				float b = cross_products[2] / area;
-				float za = va.fb_position.z;
-				float zb = vb.fb_position.z;
-				float zc = vc.fb_position.z;
-				// float lambda_a = va.inv_w * a; // inv_w is (1/w)
-				// float lambda_b = vb.inv_w * b;
-				// float lambda_c = vc.inv_w * c;
-				// float z_d = (lambda_a + lambda_b + lambda_c) / ((lambda_a / za) + (lambda_b / zb) + (lambda_c / zc));
-				float z_d = a * za + b * zb + c * zc;
-
-				frag.fb_position = Vec3(point.x + super_sampleing_dx, point.y + super_sampleing_dy, z_d);
-				frag.attributes = va.attributes;
-				// Using flat interpolation, I don't need to calculate the derivatives :)
-				frag.derivatives.fill(Vec2(0.0f, 0.0f));
-				emit_fragment(frag);
+				rasterize_or_not = false;
 			}
 		}
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Smooth) {
@@ -672,93 +712,66 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 
 		// As a placeholder, here's code that calls the Flat interpolation version of the function:
 		//(remove this and replace it with a real solution)
-		float cross_product = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y) - (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
-		const float area = std::abs(cross_product);
-		bool CW;
-		if (cross_product > 0) CW = false;		// CCW
-		else if (cross_product < 0) CW = true;	// CW
-		else return;							// degenerate triangle
-
-		// judge top left edge
-		std::function<bool(const ClippedVertex&, const ClippedVertex&)> top_left_edge;
-
-		if (CW) {
-			top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
-				return v2.fb_position.y > v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x > v1.fb_position.x);
-			};
-		} else {
-			top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
-				return v2.fb_position.y < v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x < v1.fb_position.x);
-			};
-		}
-		
-		float min_x = std::floor((std::min(std::min(va.fb_position.x, vb.fb_position.x), vc.fb_position.x)));
-		float min_y = std::floor((std::min(std::min(va.fb_position.y, vb.fb_position.y), vc.fb_position.y)));
-		float max_x = std::floor((std::max(std::max(va.fb_position.x, vb.fb_position.x), vc.fb_position.x))) + 1;
-		float max_y = std::floor((std::max(std::max(va.fb_position.y, vb.fb_position.y), vc.fb_position.y))) + 1;
-
 		for (float x = min_x; x <= max_x; x++) {
 			for (float y =min_y; y <= max_y; y++) {
-				std::array<std::pair<ClippedVertex, ClippedVertex>, 3> edge_pairs = {{ {va, vb}, {vb, vc}, {vc, va} }};
-				std::vector<float> cross_products;
-				const Vec2 point = Vec2(x + 0.5f, y + 0.5f);
-				for (auto& pair : edge_pairs) {
-					ClippedVertex v1 = pair.first;
-					ClippedVertex v2 = pair.second;
-					float v1_x = v1.fb_position.x;
-					float v1_y = v1.fb_position.y;
-					float v2_x = v2.fb_position.x;
-					float v2_y = v2.fb_position.y;
-					float p_cross_product = (v2_x - v1_x) * (point.y - v1_y) - (v2_y - v1_y) * (point.x - v1_x);
-					bool in;
-					if (top_left_edge(v1, v2)) {
-						in = CW ? p_cross_product <= 0 : p_cross_product >= 0; 
-					} else {
-						in = CW ? p_cross_product < 0 : p_cross_product > 0;
-					}
-					if (!in) {
-						continue;
-					} else {
-						cross_products.push_back(std::abs(p_cross_product));
-					}
-				}
-				
-				if (cross_products.size() != 3) {
-					continue;
-				}
+				bool rasterize_or_not = false;
+				std::vector<Fragment> frags;
+				for (uint32_t s = 0; s < samples.size(); ++s) {
+					float super_sampleing_dx = samples[s].x;
+					float super_sampleing_dy = samples[s].y;
+					float sampled_x = x + super_sampleing_dx;
+					float sampled_y = y + super_sampleing_dy;	
+					Fragment frag;
+					if (in_triangle(sampled_x, sampled_y)){
+						rasterize_or_not = true;	
+						// interpolated z
+						// c -> a -> b
+						float c = cross_products[0] / area;
+						float a = cross_products[1] / area;
+						float b = cross_products[2] / area;
+						float za = va.fb_position.z;
+						float zb = vb.fb_position.z;
+						float zc = vc.fb_position.z;
+						// float lambda_a = va.inv_w * a; // inv_w is (1/w)
+						// float lambda_b = vb.inv_w * b;
+						// float lambda_c = vc.inv_w * c;
+						// float z_d = (lambda_a + lambda_b + lambda_c) / ((lambda_a / za) + (lambda_b / zb) + (lambda_c / zc));
+						float z_d = a * za + b * zb + c * zc;
 
-				Fragment frag;
-				// interpolated z
-				// c -> a -> b
-				float c = cross_products[0] / area;
-				float a = cross_products[1] / area;
-				float b = cross_products[2] / area;
-				float za = va.fb_position.z;
-				float zb = vb.fb_position.z;
-				float zc = vc.fb_position.z;
-				// float lambda_a = va.inv_w * a; // inv_w is (1/w)
-				// float lambda_b = vb.inv_w * b;
-				// float lambda_c = vc.inv_w * c;
-				// float z_d = (lambda_a + lambda_b + lambda_c) / ((lambda_a / za) + (lambda_b / zb) + (lambda_c / zc));
-				float z_d = a * za + b * zb + c * zc;
-
-				frag.fb_position = Vec3(point.x + super_sampleing_dx, point.y + super_sampleing_dy, z_d);
-				for (int i = 0; i < frag.attributes.size(); i++) {
-					float f_a = va.attributes[i];
-					float f_b = vb.attributes[i];
-					float f_c = vc.attributes[i];
-					frag.attributes[i] = a * f_a + b * f_b + c * f_c;
+						frag.fb_position = Vec3(sampled_x, sampled_y, z_d);
+						for (int i = 0; i < frag.attributes.size(); i++) {
+							float f_a = va.attributes[i];
+							float f_b = vb.attributes[i];
+							float f_c = vc.attributes[i];
+							frag.attributes[i] = a * f_a + b * f_b + c * f_c;
+						}
+						// NOTE: here use Cramer formula to get the derivatives
+						for (int i = 0; i < frag.derivatives.size(); i++) {
+							float f_a = va.attributes[i];
+							float f_b = vb.attributes[i];
+							float f_c = vc.attributes[i];
+							float dfdx = ((f_b - f_a) * (vc.fb_position.y - va.fb_position.y) - (f_c - f_a) * (vb.fb_position.y - va.fb_position.y)) / area;
+							float dfdy = ((f_c - f_a) * (vb.fb_position.x - va.fb_position.x) - (f_b - f_a) * (vc.fb_position.x - va.fb_position.x)) / area;
+							frag.derivatives[i] = Vec2(dfdx, dfdy);
+						}
+					} else {
+						frag.fb_position = Vec3(sampled_x, sampled_y, 1.0f);
+						for (int i = 0; i < frag.attributes.size(); i++) {
+							frag.attributes[i] = .0f;
+						}
+						for (int i = 0; i < frag.derivatives.size(); i++) {
+							frag.derivatives[i] = Vec2(.0f, .0f);
+						}
+					}
+					frags.push_back(frag);
+					cross_products.clear(); 
 				}
-				// NOTE: here use Cramer formula to get the derivatives
-				for (int i = 0; i < frag.derivatives.size(); i++) {
-					float f_a = va.attributes[i];
-					float f_b = vb.attributes[i];
-					float f_c = vc.attributes[i];
-					float dfdx = ((f_b - f_a) * (vc.fb_position.y - va.fb_position.y) - (f_c - f_a) * (vb.fb_position.y - va.fb_position.y)) / area;
-					float dfdy = ((f_c - f_a) * (vb.fb_position.x - va.fb_position.x) - (f_b - f_a) * (vc.fb_position.x - va.fb_position.x)) / area;
-					frag.derivatives[i] = Vec2(dfdx, dfdy);
+				if (rasterize_or_not) {
+					for (auto frag : frags) {
+						emit_fragment(frag);
+					}
 				}
-				emit_fragment(frag);
+				rasterize_or_not = false;
 			}
 		}
 	} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
@@ -767,123 +780,82 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 
 		// As a placeholder, here's code that calls the Screen-space interpolation function:
 		//(remove this and replace it with a real solution)
-		float cross_product = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y) - (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
-		const float area = std::abs(cross_product);
-		bool CW;
-		if (cross_product > 0) CW = false;		// CCW
-		else if (cross_product < 0) CW = true;	// CW
-		else return;							// degenerate triangle
-
-		// judge top left edge
-		std::function<bool(const ClippedVertex&, const ClippedVertex&)> top_left_edge;
-
-		if (CW) {
-			top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
-				return v2.fb_position.y > v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x > v1.fb_position.x);
-			};
-		} else {
-			top_left_edge = [](const ClippedVertex& v1, const ClippedVertex& v2) {
-				return v2.fb_position.y < v1.fb_position.y || (v1.fb_position.y == v2.fb_position.y && v2.fb_position.x < v1.fb_position.x);
-			};
-		}
-		
-		float min_x = std::floor((std::min(std::min(va.fb_position.x, vb.fb_position.x), vc.fb_position.x)));
-		float min_y = std::floor((std::min(std::min(va.fb_position.y, vb.fb_position.y), vc.fb_position.y)));
-		float max_x = std::floor((std::max(std::max(va.fb_position.x, vb.fb_position.x), vc.fb_position.x))) + 1;
-		float max_y = std::floor((std::max(std::max(va.fb_position.y, vb.fb_position.y), vc.fb_position.y))) + 1;
 
 		for (float x = min_x; x <= max_x; x++) {
 			for (float y =min_y; y <= max_y; y++) {
-				std::array<std::pair<ClippedVertex, ClippedVertex>, 3> edge_pairs = {{ {va, vb}, {vb, vc}, {vc, va} }};
-				std::vector<float> cross_products;
-				const Vec2 point = Vec2(x + 0.5f, y + 0.5f);
-				for (auto& pair : edge_pairs) {
-					ClippedVertex v1 = pair.first;
-					ClippedVertex v2 = pair.second;
-					float v1_x = v1.fb_position.x;
-					float v1_y = v1.fb_position.y;
-					float v2_x = v2.fb_position.x;
-					float v2_y = v2.fb_position.y;
-					float p_cross_product = (v2_x - v1_x) * (point.y - v1_y) - (v2_y - v1_y) * (point.x - v1_x);
-					bool in;
-					if (top_left_edge(v1, v2)) {
-						in = CW ? p_cross_product <= 0 : p_cross_product >= 0; 
+				bool rasterize_or_not = false;
+				std::vector<Fragment> frags;
+				for (uint32_t s = 0; s < samples.size(); ++s) {
+					float super_sampleing_dx = samples[s].x;
+					float super_sampleing_dy = samples[s].y;
+					float sampled_x = x + super_sampleing_dx;
+					float sampled_y = y + super_sampleing_dy;	
+					Fragment frag;
+					if (in_triangle(sampled_x, sampled_y)) {
+						rasterize_or_not = true;	
+						// c -> a -> b
+						float c = cross_products[0] / area;
+						float a = cross_products[1] / area;
+						float b = cross_products[2] / area;
+						// inv_w is (1 / w)
+						// interpolate (1 / w) 
+						float inv_w_interpolated = a * va.inv_w + b * vb.inv_w + c * vc.inv_w;
+						// interpolate z
+						float z_d = a * va.fb_position.z + b * vb.fb_position.z + c * vc.fb_position.z;
+						frag.fb_position = Vec3(sampled_x, sampled_y, z_d);
+						// interpolate (attri / w)
+						for (int i = 0; i < frag.attributes.size(); i++) {
+							frag.attributes[i] = ((va.attributes[i] * va.inv_w) * a + (vb.attributes[i] * vb.inv_w) * b + (vc.attributes[i] * vc.inv_w) * c) / inv_w_interpolated;
+						}
+						// NOTE: here use Cramer formula to get the derivatives
+						/*
+						f / w = Ax + By + C
+						1 / w = Dx + Ey + F
+						f = (f/w) / (1/w) = g / h
+						df/dx = d(g/h)/dx (remeber use g = fh to replace g)
+						
+						*/
+						float inv_w_a = va.inv_w;
+						float inv_w_b = vb.inv_w;
+						float inv_w_c = vc.inv_w;
+						float dinv_w_dx = ((inv_w_b - inv_w_a) * (vc.fb_position.y - va.fb_position.y) - (inv_w_c - inv_w_a) * (vb.fb_position.y - va.fb_position.y)) / area;
+						float dinv_w_dy = ((inv_w_c - inv_w_a) * (vb.fb_position.x - va.fb_position.x) - (inv_w_b - inv_w_a) * (vc.fb_position.x - va.fb_position.x)) / area;
+		
+						float inv_w = inv_w_interpolated;
+		
+						for (int i = 0; i < frag.derivatives.size(); i++) {
+							float fa = va.attributes[i] * va.inv_w;
+							float fb = vb.attributes[i] * vb.inv_w;
+							float fc = vc.attributes[i] * vc.inv_w;
+		
+							float d_attr_over_w_dx = ((fb - fa) * (vc.fb_position.y - va.fb_position.y) - (fc - fa) * (vb.fb_position.y - va.fb_position.y)) / area;
+							float d_attr_over_w_dy = ((fc - fa) * (vb.fb_position.x - va.fb_position.x) - (fb - fa) * (vc.fb_position.x - va.fb_position.x)) / area;
+		
+							float attr = frag.attributes[i];
+		
+							float dfdx = (d_attr_over_w_dx - attr * dinv_w_dx) / inv_w;
+							float dfdy = (d_attr_over_w_dy - attr * dinv_w_dy) / inv_w;
+		
+							frag.derivatives[i] = Vec2(dfdx, dfdy);
+						}
 					} else {
-						in = CW ? p_cross_product < 0 : p_cross_product > 0;
+						frag.fb_position = Vec3(sampled_x, sampled_y, 1.0f);
+						for (int i = 0; i < frag.attributes.size(); i++) {
+							frag.attributes[i] = .0f;
+						}
+						for (int i = 0; i < frag.derivatives.size(); i++) {
+							frag.derivatives[i] = Vec2(.0f, .0f);
+						}
 					}
-					if (!in) {
-						continue;
-					} else {
-						cross_products.push_back(std::abs(p_cross_product));
+					frags.push_back(frag);
+					cross_products.clear(); 
+				}
+				if (rasterize_or_not) {
+					for (auto frag : frags) {
+						emit_fragment(frag);
 					}
 				}
-				
-				if (cross_products.size() != 3) {
-					continue;
-				}
-
-				// recalculate cross prodct
-				std::vector<float> sample_cross_products;
-				const Vec2 sample_point = Vec2(x + super_sampleing_dx, y + super_sampleing_dy);
-				for (auto& pair : edge_pairs) {
-					ClippedVertex v1 = pair.first;
-					ClippedVertex v2 = pair.second;
-					float v1_x = v1.fb_position.x;
-					float v1_y = v1.fb_position.y;
-					float v2_x = v2.fb_position.x;
-					float v2_y = v2.fb_position.y;
-					float p_cross_product = (v2_x - v1_x) * (sample_point.y - v1_y) - (v2_y - v1_y) * (sample_point.x - v1_x);
-					sample_cross_products.push_back(std::abs(p_cross_product));
-				}
-
-				Fragment frag;
-				// c -> a -> b
-				float c = sample_cross_products[0] / area;
-				float a = sample_cross_products[1] / area;
-				float b = sample_cross_products[2] / area;
-				// inv_w is (1 / w)
-				// interpolate (1 / w) 
-				float inv_w_interpolated = a * va.inv_w + b * vb.inv_w + c * vc.inv_w;
-				// interpolate z
-				float z_d = a * va.fb_position.z + b * vb.fb_position.z + c * vc.fb_position.z;
-				frag.fb_position = Vec3(sample_point.x + super_sampleing_dx, sample_point.y + super_sampleing_dy, z_d);
-				// interpolate (attri / w)
-				for (int i = 0; i < frag.attributes.size(); i++) {
-					frag.attributes[i] = ((va.attributes[i] * va.inv_w) * a + (vb.attributes[i] * vb.inv_w) * b + (vc.attributes[i] * vc.inv_w) * c) / inv_w_interpolated;
-				}
-				// NOTE: here use Cramer formula to get the derivatives
-				/*
-				f / w = Ax + By + C
-				1 / w = Dx + Ey + F
-				f = (f/w) / (1/w) = g / h
-				df/dx = d(g/h)/dx (remeber use g = fh to replace g)
-				
-				*/
-				float inv_w_a = va.inv_w;
-				float inv_w_b = vb.inv_w;
-				float inv_w_c = vc.inv_w;
-				float dinv_w_dx = ((inv_w_b - inv_w_a) * (vc.fb_position.y - va.fb_position.y) - (inv_w_c - inv_w_a) * (vb.fb_position.y - va.fb_position.y)) / area;
-				float dinv_w_dy = ((inv_w_c - inv_w_a) * (vb.fb_position.x - va.fb_position.x) - (inv_w_b - inv_w_a) * (vc.fb_position.x - va.fb_position.x)) / area;
-
-				float inv_w = inv_w_interpolated;
-
-				for (int i = 0; i < frag.derivatives.size(); i++) {
-					float fa = va.attributes[i] * va.inv_w;
-					float fb = vb.attributes[i] * vb.inv_w;
-					float fc = vc.attributes[i] * vc.inv_w;
-
-					float d_attr_over_w_dx = ((fb - fa) * (vc.fb_position.y - va.fb_position.y) - (fc - fa) * (vb.fb_position.y - va.fb_position.y)) / area;
-					float d_attr_over_w_dy = ((fc - fa) * (vb.fb_position.x - va.fb_position.x) - (fb - fa) * (vc.fb_position.x - va.fb_position.x)) / area;
-
-					float attr = frag.attributes[i];
-
-					float dfdx = (d_attr_over_w_dx - attr * dinv_w_dx) / inv_w;
-					float dfdy = (d_attr_over_w_dy - attr * dinv_w_dy) / inv_w;
-
-					frag.derivatives[i] = Vec2(dfdx, dfdy);
-				}
-
-				emit_fragment(frag);
+				rasterize_or_not = false;
 			}
 		}
 	}
