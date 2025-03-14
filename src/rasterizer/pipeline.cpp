@@ -377,9 +377,20 @@ void Pipeline<p, P, flags>::clip_triangle(
 		clip_range(a.z, ba.z, a.w, ba.w);
 
 		if (min_t < max_t) {
-			if (min_t == 0.0f) {
-				clipped_vertex.push_back(v1);
-			} else {
+			if (min_t == 0.0f && max_t == 1.0f) {
+				clipped_vertex.push_back(v2);
+			} else if (min_t == 0.0f && max_t < 1.0f) {
+				// default smooth interpolate
+				ShadedVertex out = lerp(v1, v2, max_t);
+				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+					out.attributes = va.attributes;
+				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+					for (int i = 0; i < out.attributes.size(); i++) {
+						out.attributes[i] = ((v1.attributes[i] / v1.clip_position.w) * max_t + (v2.attributes[i] / v2.clip_position.w) * (1 - max_t)) / (max_t / v1.clip_position.w + (1 - max_t) / v2.clip_position.w);
+					}
+				}
+				clipped_vertex.push_back(out);
+			} else if (min_t > 0.0f && max_t == 1.0f) {
 				// default smooth interpolate
 				ShadedVertex out = lerp(v1, v2, min_t);
 				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
@@ -391,11 +402,19 @@ void Pipeline<p, P, flags>::clip_triangle(
 					}
 				}
 				clipped_vertex.push_back(out);
-			}
-
-			if (max_t == 1.0f) {
 				clipped_vertex.push_back(v2);
-			} else {
+			} else if (min_t > 0.0f && max_t < 1.0f) {
+				// default smooth interpolate
+				ShadedVertex in = lerp(v1, v2, min_t);
+				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+					in.attributes = va.attributes;
+				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+					for (int i = 0; i < in.attributes.size(); i++) {
+						float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
+						in.attributes[i] = ((v1.attributes[i] / v1_w) * (1 - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
+					}
+				}
+				clipped_vertex.push_back(in);
 				// default smooth interpolate
 				ShadedVertex out = lerp(v1, v2, max_t);
 				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
@@ -409,46 +428,12 @@ void Pipeline<p, P, flags>::clip_triangle(
 			}
 		}
 	}
-	if (clipped_vertex.size() == 3) { // only one triangle
-		emit_vertex(clipped_vertex[0]);
-		emit_vertex(clipped_vertex[1]);
-		emit_vertex(clipped_vertex[2]);
-	} else if (clipped_vertex.size() == 4) { // two triangle
-		emit_vertex(clipped_vertex[0]);
-		emit_vertex(clipped_vertex[1]);
-		emit_vertex(clipped_vertex[2]);
-
-		emit_vertex(clipped_vertex[0]);
-		emit_vertex(clipped_vertex[2]);
-		emit_vertex(clipped_vertex[3]);
-	} else if (clipped_vertex.size() == 5) { // three triangle
-		emit_vertex(clipped_vertex[0]);
-		emit_vertex(clipped_vertex[1]);
-		emit_vertex(clipped_vertex[2]);
-
-		emit_vertex(clipped_vertex[2]);
-		emit_vertex(clipped_vertex[3]);
-		emit_vertex(clipped_vertex[4]);
-		
-		emit_vertex(clipped_vertex[0]);
-		emit_vertex(clipped_vertex[2]);
-		emit_vertex(clipped_vertex[4]);
-	} else if (clipped_vertex.size() == 6) { // only four triangle
-		emit_vertex(clipped_vertex[0]);
-		emit_vertex(clipped_vertex[1]);
-		emit_vertex(clipped_vertex[2]);
-
-		emit_vertex(clipped_vertex[2]);
-		emit_vertex(clipped_vertex[3]);
-		emit_vertex(clipped_vertex[4]);
-		
-		emit_vertex(clipped_vertex[4]);
-		emit_vertex(clipped_vertex[5]);
-		emit_vertex(clipped_vertex[0]);
-					
-		emit_vertex(clipped_vertex[0]);
-		emit_vertex(clipped_vertex[2]);
-		emit_vertex(clipped_vertex[4]);
+	if (clipped_vertex.size() >= 3) {
+		for (size_t i = 1; i < clipped_vertex.size() - 1; ++i) {
+			emit_vertex(clipped_vertex[0]);       
+			emit_vertex(clipped_vertex[i]);         
+			emit_vertex(clipped_vertex[i + 1]);    
+		}
 	}
 }
 
