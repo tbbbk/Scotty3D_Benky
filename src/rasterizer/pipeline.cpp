@@ -105,27 +105,12 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 			for (uint32_t s = 0; s < samples.size(); ++s) {
 				float dx = samples[s].x;
 				float dy = samples[s].y;
-				// ClippedVertex va = clipped_vertices[i];
-				// ClippedVertex vb = clipped_vertices[i + 1];
-				// va.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
-				// vb.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
 				rasterize_line(clipped_vertices[i], clipped_vertices[i + 1], emit_fragment, dx, dy);
 			}
 		}
 	} else if constexpr (primitive_type == PrimitiveType::Triangles) {
 		for (uint32_t i = 0; i + 2 < clipped_vertices.size(); i += 3) {
 			rasterize_triangle(clipped_vertices[i], clipped_vertices[i + 1], clipped_vertices[i + 2], emit_fragment, sample_);
-			// for (uint32_t s = 0; s < samples.size(); ++s) {
-			// 	float dx = samples[s].x;
-			// 	float dy = samples[s].y;
-			// 	// ClippedVertex va = clipped_vertices[i];
-			// 	// ClippedVertex vb = clipped_vertices[i + 1];
-			// 	// ClippedVertex vc = clipped_vertices[i + 2];
-			// 	// va.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
-			// 	// vb.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
-			// 	// vc.fb_position += Vec3(samples[s].x, samples[s].y, .0f);
-			// 	rasterize_triangle(clipped_vertices[i], clipped_vertices[i + 1], clipped_vertices[i + 2], emit_fragment, dx, dy);
-			// }
 		}
 	} else {
 		static_assert(primitive_type == PrimitiveType::Lines, "Unsupported primitive type.");
@@ -135,11 +120,6 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 	// depth test + shade + blend fragments:
 	uint32_t out_of_range = 0; // check if rasterization produced fragments outside framebuffer 
 							   // (indicates something is wrong with clipping)
-	/*
-	Here we have a very big problem, not every fragment can generate samples.size() samples, which will cause bugs.
-
-	
-	*/
 	assert(fragments.size() % samples.size() == 0);
 	for (size_t i = 0; i < fragments.size() / samples.size(); i++) {
 		for (uint32_t s = 0; s < samples.size(); s++) {
@@ -342,9 +322,134 @@ void Pipeline<p, P, flags>::clip_triangle(
 	std::function<void(ShadedVertex const&)> const& emit_vertex) {
 	// A1EC: clip_triangle
 	// TODO: correct code!
-	emit_vertex(va);
-	emit_vertex(vb);
-	emit_vertex(vc);
+	// emit_vertex(va);
+	// emit_vertex(vb);
+	// emit_vertex(vc);
+
+	float min_t = 0.0f;
+	float max_t = 1.0f;
+
+	auto clip_range = [&min_t, &max_t](float l, float dl, float r, float dr) {
+		/**
+		 * p(t) = (b - a) * t + a
+		 * x(t) = (b.x - a.x) * t + a.x
+		 * w(t) = (b.w - a.w) * t + a.w
+		 * -w(t) <= x(t) <= w(t)
+		 * l + t * dl <= r + t * dr
+		 */
+		if (dr == dl) {
+			if (l - r > 0.0f) {
+				min_t = 1.0f;
+				max_t = 0.0f;
+			}
+		} else if (dr > dl) {
+			min_t = std::max(min_t, (l - r) / (dr -dl));
+		} else {
+			max_t = std::min(max_t, (l - r) / (dr -dl));
+		}
+	};
+
+	std::vector<std::pair<ShadedVertex, ShadedVertex>> vmvn = {{va, vb}, {vb, vc}, {vc, va}};
+	std::vector<ShadedVertex> clipped_vertex;
+
+	for (auto v1v2 : vmvn) {
+		// reset the t
+		min_t = 0.0f;
+		max_t = 1.0f;
+		ShadedVertex v1 = v1v2.first;
+		ShadedVertex v2 = v1v2.second;
+		float v1_w = v1.clip_position.w;
+		float v2_w = v2.clip_position.w;
+
+		// local names for clip positions and their difference:
+		Vec4 const& a = v1.clip_position;
+		Vec4 const& b = v2.clip_position;
+		Vec4 const ba = b - a;
+
+		// -a.w - t * ba.w <= a.x + t * ba.x <= a.w + t * ba.w
+		clip_range(-a.w, -ba.w, a.x, ba.x);
+		clip_range(a.x, ba.x, a.w, ba.w);
+		// -a.w - t * ba.w <= a.y + t * ba.y <= a.w + t * ba.w
+		clip_range(-a.w, -ba.w, a.y, ba.y);
+		clip_range(a.y, ba.y, a.w, ba.w);
+		// -a.w - t * ba.w <= a.z + t * ba.z <= a.w + t * ba.w
+		clip_range(-a.w, -ba.w, a.z, ba.z);
+		clip_range(a.z, ba.z, a.w, ba.w);
+
+		if (min_t < max_t) {
+			if (min_t == 0.0f) {
+				clipped_vertex.push_back(v1);
+			} else {
+				// default smooth interpolate
+				ShadedVertex out = lerp(v1, v2, min_t);
+				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+					out.attributes = va.attributes;
+				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+					for (int i = 0; i < out.attributes.size(); i++) {
+						float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
+						out.attributes[i] = ((v1.attributes[i] / v1_w) * (1 - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
+					}
+				}
+				clipped_vertex.push_back(out);
+			}
+
+			if (max_t == 1.0f) {
+				clipped_vertex.push_back(v2);
+			} else {
+				// default smooth interpolate
+				ShadedVertex out = lerp(v1, v2, max_t);
+				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+					out.attributes = va.attributes;
+				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+					for (int i = 0; i < out.attributes.size(); i++) {
+						out.attributes[i] = ((v1.attributes[i] / v1.clip_position.w) * max_t + (v2.attributes[i] / v2.clip_position.w) * (1 - max_t)) / (max_t / v1.clip_position.w + (1 - max_t) / v2.clip_position.w);
+					}
+				}
+				clipped_vertex.push_back(out);
+			}
+		}
+	}
+	if (clipped_vertex.size() == 3) { // only one triangle
+		emit_vertex(clipped_vertex[0]);
+		emit_vertex(clipped_vertex[1]);
+		emit_vertex(clipped_vertex[2]);
+	} else if (clipped_vertex.size() == 4) { // two triangle
+		emit_vertex(clipped_vertex[0]);
+		emit_vertex(clipped_vertex[1]);
+		emit_vertex(clipped_vertex[2]);
+
+		emit_vertex(clipped_vertex[0]);
+		emit_vertex(clipped_vertex[2]);
+		emit_vertex(clipped_vertex[3]);
+	} else if (clipped_vertex.size() == 5) { // three triangle
+		emit_vertex(clipped_vertex[0]);
+		emit_vertex(clipped_vertex[1]);
+		emit_vertex(clipped_vertex[2]);
+
+		emit_vertex(clipped_vertex[2]);
+		emit_vertex(clipped_vertex[3]);
+		emit_vertex(clipped_vertex[4]);
+		
+		emit_vertex(clipped_vertex[0]);
+		emit_vertex(clipped_vertex[2]);
+		emit_vertex(clipped_vertex[4]);
+	} else if (clipped_vertex.size() == 6) { // only four triangle
+		emit_vertex(clipped_vertex[0]);
+		emit_vertex(clipped_vertex[1]);
+		emit_vertex(clipped_vertex[2]);
+
+		emit_vertex(clipped_vertex[2]);
+		emit_vertex(clipped_vertex[3]);
+		emit_vertex(clipped_vertex[4]);
+		
+		emit_vertex(clipped_vertex[4]);
+		emit_vertex(clipped_vertex[5]);
+		emit_vertex(clipped_vertex[0]);
+					
+		emit_vertex(clipped_vertex[0]);
+		emit_vertex(clipped_vertex[2]);
+		emit_vertex(clipped_vertex[4]);
+	}
 }
 
 // -------------------------------------------------------------------------
