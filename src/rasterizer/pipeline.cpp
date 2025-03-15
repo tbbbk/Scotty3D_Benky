@@ -322,28 +322,8 @@ void Pipeline<p, P, flags>::clip_triangle(
 	// emit_vertex(vb);
 	// emit_vertex(vc);
 
-	float min_t = 0.0f;
-	float max_t = 1.0f;
-
-	auto clip_range = [&min_t, &max_t](float l, float dl, float r, float dr) {
-		/**
-		 * p(t) = (b - a) * t + a
-		 * x(t) = (b.x - a.x) * t + a.x
-		 * w(t) = (b.w - a.w) * t + a.w
-		 * -w(t) <= x(t) <= w(t)
-		 * l + t * dl <= r + t * dr
-		 */
-		if (dr == dl) {
-			if (l - r > 0.0f) {
-				min_t = 1.0f;
-				max_t = 0.0f;
-			}
-		} else if (dr > dl) {
-			min_t = std::max(min_t, (l - r) / (dr -dl));
-		} else {
-			max_t = std::min(max_t, (l - r) / (dr -dl));
-		}
-	};
+	float min_t;
+	float max_t;
 
 	std::vector<std::pair<ShadedVertex, ShadedVertex>> vmvn = {{va, vb}, {vb, vc}, {vc, va}};
 	std::vector<ShadedVertex> clipped_vertex;
@@ -352,6 +332,29 @@ void Pipeline<p, P, flags>::clip_triangle(
 		// reset the t
 		min_t = 0.0f;
 		max_t = 1.0f;
+		auto clip_range = [&min_t, &max_t](float l, float dl, float r, float dr) {
+			// restrict range such that:
+			// l + t * dl <= r + t * dr
+			// re-arranging:
+			//  l - r <= t * (dr - dl)
+			if (dr == dl) {
+				// want: l - r <= 0
+				if (l - r > 0.0f) {
+					// works for none of range, so make range empty:
+					min_t = 1.0f;
+					max_t = 0.0f;
+				}
+			} else if (dr > dl) {
+				// since dr - dl is positive:
+				// want: (l - r) / (dr - dl) <= t
+				min_t = std::max(min_t, (l - r) / (dr - dl));
+			} else { // dr < dl
+				// since dr - dl is negative:
+				// want: (l - r) / (dr - dl) >= t
+				max_t = std::min(max_t, (l - r) / (dr - dl));
+			}
+		};
+
 		ShadedVertex v1 = v1v2.first;
 		ShadedVertex v2 = v1v2.second;
 		float v1_w = v1.clip_position.w;
@@ -374,6 +377,9 @@ void Pipeline<p, P, flags>::clip_triangle(
 
 		if (min_t < max_t) {
 			if (min_t == 0.0f && max_t == 1.0f) {
+				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+					v2.attributes = va.attributes;
+				}
 				clipped_vertex.push_back(v2);
 			} else if (min_t == 0.0f && max_t < 1.0f) {
 				// default smooth interpolate
@@ -381,8 +387,9 @@ void Pipeline<p, P, flags>::clip_triangle(
 				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 					out.attributes = va.attributes;
 				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+					float inv_w = (1.0f - max_t) / v1_w + max_t / v2_w;
 					for (int i = 0; i < out.attributes.size(); i++) {
-						out.attributes[i] = ((v1.attributes[i] / v1.clip_position.w) * max_t + (v2.attributes[i] / v2.clip_position.w) * (1 - max_t)) / (max_t / v1.clip_position.w + (1 - max_t) / v2.clip_position.w);
+						out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - max_t) + (v2.attributes[i] / v2_w) * max_t) / inv_w;
 					}
 				}
 				clipped_vertex.push_back(out);
@@ -391,10 +398,11 @@ void Pipeline<p, P, flags>::clip_triangle(
 				ShadedVertex out = lerp(v1, v2, min_t);
 				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 					out.attributes = va.attributes;
+					v2.attributes = va.attributes;
 				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+					float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
 					for (int i = 0; i < out.attributes.size(); i++) {
-						float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
-						out.attributes[i] = ((v1.attributes[i] / v1_w) * (1 - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
+						out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
 					}
 				}
 				clipped_vertex.push_back(out);
@@ -405,9 +413,9 @@ void Pipeline<p, P, flags>::clip_triangle(
 				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 					in.attributes = va.attributes;
 				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+					float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
 					for (int i = 0; i < in.attributes.size(); i++) {
-						float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
-						in.attributes[i] = ((v1.attributes[i] / v1_w) * (1 - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
+						in.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
 					}
 				}
 				clipped_vertex.push_back(in);
@@ -416,14 +424,16 @@ void Pipeline<p, P, flags>::clip_triangle(
 				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
 					out.attributes = va.attributes;
 				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+					float inv_w = (1.0f - max_t) / v1_w + max_t / v2_w;
 					for (int i = 0; i < out.attributes.size(); i++) {
-						out.attributes[i] = ((v1.attributes[i] / v1.clip_position.w) * max_t + (v2.attributes[i] / v2.clip_position.w) * (1 - max_t)) / (max_t / v1.clip_position.w + (1 - max_t) / v2.clip_position.w);
+						out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - max_t) + (v2.attributes[i] / v2_w) * max_t) / inv_w;
 					}
 				}
 				clipped_vertex.push_back(out);
 			}
 		}
 	}
+
 	if (clipped_vertex.size() >= 3) {
 		for (size_t i = 1; i < clipped_vertex.size() - 1; ++i) {
 			emit_vertex(clipped_vertex[0]);       
@@ -826,10 +836,6 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 						float za = va.fb_position.z;
 						float zb = vb.fb_position.z;
 						float zc = vc.fb_position.z;
-						// float lambda_a = va.inv_w * a; // inv_w is (1/w)
-						// float lambda_b = vb.inv_w * b;
-						// float lambda_c = vc.inv_w * c;
-						// float z_d = (lambda_a + lambda_b + lambda_c) / ((lambda_a / za) + (lambda_b / zb) + (lambda_c / zc));
 						float z_d = a * za + b * zb + c * zc;
 
 						frag.fb_position = Vec3(sampled_x, sampled_y, z_d);
