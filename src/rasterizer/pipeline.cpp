@@ -102,11 +102,7 @@ void Pipeline<primitive_type, Program, flags>::run(std::vector<Vertex> const& ve
 	auto sample_ = samples;
 	if constexpr (primitive_type == PrimitiveType::Lines) {
 		for (uint32_t i = 0; i + 1 < clipped_vertices.size(); i += 2) {
-			for (uint32_t s = 0; s < samples.size(); ++s) {
-				float dx = samples[s].x;
-				float dy = samples[s].y;
-				rasterize_line(clipped_vertices[i], clipped_vertices[i + 1], emit_fragment, dx, dy);
-			}
+			rasterize_line(clipped_vertices[i], clipped_vertices[i + 1], emit_fragment, sample_);
 		}
 	} else if constexpr (primitive_type == PrimitiveType::Triangles) {
 		for (uint32_t i = 0; i + 2 < clipped_vertices.size(); i += 3) {
@@ -489,7 +485,7 @@ template<PrimitiveType p, class P, uint32_t flags>
 void Pipeline<p, P, flags>::rasterize_line(
 	ClippedVertex const& va, ClippedVertex const& vb,
 	std::function<void(Fragment const&)> const& emit_fragment, 
-	float const& super_sampleing_dx, float const& super_sampleing_dy) {
+	std::vector<Vec3> samples) {
 	if constexpr ((flags & PipelineMask_Interp) != Pipeline_Interp_Flat) {
 		assert(0 && "rasterize_line should only be invoked in flat interpolation mode.");
 	}
@@ -499,6 +495,12 @@ void Pipeline<p, P, flags>::rasterize_line(
 	// this function!
 	// The OpenGL specification section 3.5 may also come in handy.
 
+	/**
+	 * Preparation
+	 */
+	if (samples.size() == 0) {
+		samples.push_back(Vec3(.5f, .5f, 1.0f));
+	}
 	auto va_copy = va;
 	auto vb_copy = vb;
 	// Point A should always be the left one
@@ -542,7 +544,7 @@ void Pipeline<p, P, flags>::rasterize_line(
 		float x = va_x;
 		float direction = va_y < vb_y ? 1.0f : -1.0f;
 		while (true) {
-			raster_points.insert({std::floor(x) + super_sampleing_dx, std::floor(y) + super_sampleing_dy});
+			raster_points.insert({std::floor(x) + 0.5f, std::floor(y) + 0.5f});
 			y += direction;
 			if ((direction == 1 && y >= vb_y) || (direction == -1 && y <= vb_y)) {
 				break;
@@ -554,7 +556,7 @@ void Pipeline<p, P, flags>::rasterize_line(
 		float y = va_y;
 		float x = va_x;
 		while (true) {
-			raster_points.insert({std::floor(x) + super_sampleing_dx, std::floor(y) + super_sampleing_dy});
+			raster_points.insert({std::floor(x) + 0.5f, std::floor(y) + 0.5f});
 			x++;
 			if (x >= vb_x) {
 				break;
@@ -582,7 +584,7 @@ void Pipeline<p, P, flags>::rasterize_line(
 			for (float x = va_x; x <=vb_x; x++) {
 				// check the diamond
 				if (check_diamond(x, y)) {
-					raster_points.insert({std::floor(x) + super_sampleing_dx, std::floor(y) + super_sampleing_dy});
+					raster_points.insert({std::floor(x) + 0.5f, std::floor(y) + 0.5f});
 				}
 				eps += m;
 				if (m >= 0 && eps > 0.5) {
@@ -599,7 +601,7 @@ void Pipeline<p, P, flags>::rasterize_line(
 			for (float y = va_y; y <=vb_y; y++) {
 				// check the diamond
 				if (check_diamond(x, y)) {
-					raster_points.insert({std::floor(x)  + super_sampleing_dx, std::floor(y) + super_sampleing_dy});
+					raster_points.insert({std::floor(x)  + 0.5f, std::floor(y) + 0.5f});
 				}
 				eps += 1 / m;
 				if (m >= 0 && eps > 0.5) {
@@ -616,7 +618,7 @@ void Pipeline<p, P, flags>::rasterize_line(
 
 	// remove the fragment of endpoint
 	if (check_diamond(vb_x, vb_y)) {
-		std::pair<float, float> last_point = {std::floor(vb_x) + super_sampleing_dx, std::floor(vb_y) + super_sampleing_dy};
+		std::pair<float, float> last_point = {std::floor(vb_x) + 0.5f, std::floor(vb_y) + 0.5f};
 		auto it = raster_points.find(last_point);
 		if (it != raster_points.end()) {
 			raster_points.erase(it);
@@ -625,7 +627,9 @@ void Pipeline<p, P, flags>::rasterize_line(
 
 	// draw all point
 	for (const auto& point : raster_points) {
-		draw_point(point.first, point.second);
+		for (uint32_t s =  0; s < samples.size(); ++s) {
+			draw_point(point.first, point.second);
+		}
 	}
 }
 
@@ -686,7 +690,7 @@ void Pipeline<p, P, flags>::rasterize_triangle(
 	 * Preparation
 	 */
 	if (samples.size() == 0) {
-		samples.push_back(Vec3(.5f, .5f, .0f));
+		samples.push_back(Vec3(.5f, .5f, 1.0f));
 	}
 	float cross_product = (vb.fb_position.x - va.fb_position.x) * (vc.fb_position.y - va.fb_position.y) - (vb.fb_position.y - va.fb_position.y) * (vc.fb_position.x - va.fb_position.x);
 	const float area = std::abs(cross_product);
