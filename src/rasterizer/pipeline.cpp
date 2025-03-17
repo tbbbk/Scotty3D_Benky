@@ -321,7 +321,11 @@ void Pipeline<p, P, flags>::clip_triangle(
 	// emit_vertex(va);
 	// emit_vertex(vb);
 	// emit_vertex(vc);
-	
+	/**
+	 * !IMPORTANT!
+	 * I misunderstood the Sutherland-Hodgman algorithm. 
+	 * I should clip axis one by one instead of process together
+	 */
 	auto clip_one_axis = [&va](const char mode, std::vector<ShadedVertex>& clipped_vertex) {
 		std::vector<ShadedVertex> projected_vertex;
 		ShadedVertex v1;
