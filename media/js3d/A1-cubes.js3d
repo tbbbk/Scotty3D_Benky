@@ -9,8 +9,8 @@
 		},
 		"Camera_transform":{
 			"parent":null,
-			"translation":[0,1.5740000009536743,3],
-			"rotation":[-0.14954335987567902,2.0239092179963336e-08,-1.33817195546726e-07,0.9887551665306091],
+			"translation":[0,1.5740000009536743,5],
+			"rotation":[-0.14954334497451782,2.0239088627249657e-08,-1.3381718133587128e-07,0.9887551665306091],
 			"scale":[1,1,1]
 		},
 		"Transform":{
@@ -82,7 +82,7 @@
 				"material":"lam_white",
 				"visible":true,
 				"collides":true,
-				"draw style":"Correct",
+				"draw style":"Wireframe",
 				"blend style":"Blend Replace",
 				"depth style":"Depth Less"
 			},
@@ -92,7 +92,7 @@
 				"material":"lam_white",
 				"visible":true,
 				"collides":true,
-				"draw style":"Correct",
+				"draw style":"Flat",
 				"blend style":"Blend Replace",
 				"depth style":"Depth Less"
 			},
@@ -102,7 +102,7 @@
 				"material":"lam_white",
 				"visible":true,
 				"collides":true,
-				"draw style":"Correct",
+				"draw style":"Smooth",
 				"blend style":"Blend Replace",
 				"depth style":"Depth Less"
 			},

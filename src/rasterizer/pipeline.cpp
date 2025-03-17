@@ -244,7 +244,7 @@ void Pipeline<p, P, flags>::clip_line(ShadedVertex const& va, ShadedVertex const
 		// l + t * dl <= r + t * dr
 		// re-arranging:
 		//  l - r <= t * (dr - dl)
-		if (dr == dl) {
+		if (std::abs(dr - dl) < 1e-6f) {
 			// want: l - r <= 0
 			if (l - r > 0.0f) {
 				// works for none of range, so make range empty:
@@ -321,117 +321,135 @@ void Pipeline<p, P, flags>::clip_triangle(
 	// emit_vertex(va);
 	// emit_vertex(vb);
 	// emit_vertex(vc);
-
-	float min_t;
-	float max_t;
-
-	std::vector<std::pair<ShadedVertex, ShadedVertex>> vmvn = {{va, vb}, {vb, vc}, {vc, va}};
-	std::vector<ShadedVertex> clipped_vertex;
-
-	for (auto v1v2 : vmvn) {
-		// reset the t
-		min_t = 0.0f;
-		max_t = 1.0f;
-		auto clip_range = [&min_t, &max_t](float l, float dl, float r, float dr) {
-			// restrict range such that:
-			// l + t * dl <= r + t * dr
-			// re-arranging:
-			//  l - r <= t * (dr - dl)
-			if (dr == dl) {
-				// want: l - r <= 0
-				if (l - r > 0.0f) {
-					// works for none of range, so make range empty:
-					min_t = 1.0f;
-					max_t = 0.0f;
-				}
-			} else if (dr > dl) {
-				// since dr - dl is positive:
-				// want: (l - r) / (dr - dl) <= t
-				min_t = std::max(min_t, (l - r) / (dr - dl));
-			} else { // dr < dl
-				// since dr - dl is negative:
-				// want: (l - r) / (dr - dl) >= t
-				max_t = std::min(max_t, (l - r) / (dr - dl));
+	
+	auto clip_one_axis = [&va](const char mode, std::vector<ShadedVertex>& clipped_vertex) {
+		std::vector<ShadedVertex> projected_vertex;
+		ShadedVertex v1;
+		ShadedVertex v2;
+		for (uint32_t idx = 0; idx < clipped_vertex.size(); idx++) {
+			if (idx != clipped_vertex.size() - 1) {
+				v1 = clipped_vertex[idx];
+				v2 = clipped_vertex[idx + 1];
+			} else {
+				v1 = clipped_vertex[idx];
+				v2 = clipped_vertex[0];
 			}
-		};
-
-		ShadedVertex v1 = v1v2.first;
-		ShadedVertex v2 = v1v2.second;
-		float v1_w = v1.clip_position.w;
-		float v2_w = v2.clip_position.w;
-
-		// local names for clip positions and their difference:
-		Vec4 const& a = v1.clip_position;
-		Vec4 const& b = v2.clip_position;
-		Vec4 const ba = b - a;
-
-		// -a.w - t * ba.w <= a.x + t * ba.x <= a.w + t * ba.w
-		clip_range(-a.w, -ba.w, a.x, ba.x);
-		clip_range(a.x, ba.x, a.w, ba.w);
-		// -a.w - t * ba.w <= a.y + t * ba.y <= a.w + t * ba.w
-		clip_range(-a.w, -ba.w, a.y, ba.y);
-		clip_range(a.y, ba.y, a.w, ba.w);
-		// -a.w - t * ba.w <= a.z + t * ba.z <= a.w + t * ba.w
-		clip_range(-a.w, -ba.w, a.z, ba.z);
-		clip_range(a.z, ba.z, a.w, ba.w);
-
-		if (min_t < max_t) {
-			if (min_t == 0.0f && max_t == 1.0f) {
-				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
-					v2.attributes = va.attributes;
-				}
-				clipped_vertex.push_back(v2);
-			} else if (min_t == 0.0f && max_t < 1.0f) {
-				// default smooth interpolate
-				ShadedVertex out = lerp(v1, v2, max_t);
-				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
-					out.attributes = va.attributes;
-				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
-					float inv_w = (1.0f - max_t) / v1_w + max_t / v2_w;
-					for (int i = 0; i < out.attributes.size(); i++) {
-						out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - max_t) + (v2.attributes[i] / v2_w) * max_t) / inv_w;
+			float min_t = 0.0f;
+			float max_t = 1.0f;
+			auto clip_range = [&min_t, &max_t](float l, float dl, float r, float dr) {
+				// restrict range such that:
+				// l + t * dl <= r + t * dr
+				// re-arranging:
+				//  l - r <= t * (dr - dl)
+				if (std::abs(dr - dl) < 1e-6f) {
+					// want: l - r <= 0
+					if (l - r > 0.0f) {
+						// works for none of range, so make range empty:
+						min_t = 1.0f;
+						max_t = 0.0f;
 					}
+				} else if (dr > dl) {
+					// since dr - dl is positive:
+					// want: (l - r) / (dr - dl) <= t
+					min_t = std::max(min_t, (l - r) / (dr - dl));
+				} else { // dr < dl
+					// since dr - dl is negative:
+					// want: (l - r) / (dr - dl) >= t
+					max_t = std::min(max_t, (l - r) / (dr - dl));
 				}
-				clipped_vertex.push_back(out);
-			} else if (min_t > 0.0f && max_t == 1.0f) {
-				// default smooth interpolate
-				ShadedVertex out = lerp(v1, v2, min_t);
-				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
-					out.attributes = va.attributes;
-					v2.attributes = va.attributes;
-				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
-					float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
-					for (int i = 0; i < out.attributes.size(); i++) {
-						out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
+			};
+			
+			Vec4 const& a = v1.clip_position;
+			Vec4 const& b = v2.clip_position;
+			Vec4 const ba = b - a;
+			float v1_w = v1.clip_position.w;
+			float v2_w = v2.clip_position.w;
+
+			assert(mode == 'x' || mode == 'y' || mode == 'z');
+			if (mode == 'z') {
+				// -a.w - t * ba.w <= a.z + t * ba.z <= a.w + t * ba.w
+				clip_range(-a.w, -ba.w, a.z, ba.z);
+				clip_range(a.z, ba.z, a.w, ba.w);
+			} else if (mode == 'x') {
+				// -a.w - t * ba.w <= a.x + t * ba.x <= a.w + t * ba.w
+				clip_range(-a.w, -ba.w, a.x, ba.x);
+				clip_range(a.x, ba.x, a.w, ba.w);
+			} else if (mode == 'y') {
+				// -a.w - t * ba.w <= a.y + t * ba.y <= a.w + t * ba.w
+				clip_range(-a.w, -ba.w, a.y, ba.y);
+				clip_range(a.y, ba.y, a.w, ba.w);
+			}
+
+			if (min_t < max_t) {
+				if (min_t == 0.0f && max_t == 1.0f) {
+					if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+						v2.attributes = va.attributes;
 					}
-				}
-				clipped_vertex.push_back(out);
-				clipped_vertex.push_back(v2);
-			} else if (min_t > 0.0f && max_t < 1.0f) {
-				// default smooth interpolate
-				ShadedVertex in = lerp(v1, v2, min_t);
-				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
-					in.attributes = va.attributes;
-				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
-					float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
-					for (int i = 0; i < in.attributes.size(); i++) {
-						in.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
+					projected_vertex.push_back(v2);
+				} else if (min_t == 0.0f && max_t < 1.0f) {
+					// default smooth interpolate
+					ShadedVertex out = lerp(v1, v2, max_t);
+					if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+						out.attributes = va.attributes;
+					} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+						float inv_w = (1.0f - max_t) / v1_w + max_t / v2_w;
+						for (int i = 0; i < out.attributes.size(); i++) {
+							out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - max_t) + (v2.attributes[i] / v2_w) * max_t) / inv_w;
+						}
 					}
-				}
-				clipped_vertex.push_back(in);
-				// default smooth interpolate
-				ShadedVertex out = lerp(v1, v2, max_t);
-				if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
-					out.attributes = va.attributes;
-				} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
-					float inv_w = (1.0f - max_t) / v1_w + max_t / v2_w;
-					for (int i = 0; i < out.attributes.size(); i++) {
-						out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - max_t) + (v2.attributes[i] / v2_w) * max_t) / inv_w;
+					projected_vertex.push_back(out);
+				} else if (min_t > 0.0f && max_t == 1.0f) {
+					// default smooth interpolate
+					ShadedVertex out = lerp(v1, v2, min_t);
+					if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+						out.attributes = va.attributes;
+						v2.attributes = va.attributes;
+					} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+						float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
+						for (int i = 0; i < out.attributes.size(); i++) {
+							out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
+						}
 					}
+					projected_vertex.push_back(out);
+					projected_vertex.push_back(v2);
+				} else if (min_t > 0.0f && max_t < 1.0f) {
+					// default smooth interpolate
+					ShadedVertex in = lerp(v1, v2, min_t);
+					if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+						in.attributes = va.attributes;
+					} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+						float inv_w = (1.0f - min_t) / v1_w + min_t / v2_w;
+						for (int i = 0; i < in.attributes.size(); i++) {
+							in.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - min_t) + (v2.attributes[i] / v2_w) * min_t) / inv_w;
+						}
+					}
+					projected_vertex.push_back(in);
+					// default smooth interpolate
+					ShadedVertex out = lerp(v1, v2, max_t);
+					if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Flat) {
+						out.attributes = va.attributes;
+					} else if constexpr ((flags & PipelineMask_Interp) == Pipeline_Interp_Correct) {
+						float inv_w = (1.0f - max_t) / v1_w + max_t / v2_w;
+						for (int i = 0; i < out.attributes.size(); i++) {
+							out.attributes[i] = ((v1.attributes[i] / v1_w) * (1.0f - max_t) + (v2.attributes[i] / v2_w) * max_t) / inv_w;
+						}
+					}
+					projected_vertex.push_back(out);
 				}
-				clipped_vertex.push_back(out);
 			}
 		}
+		return projected_vertex;
+	};
+
+	std::vector<ShadedVertex> clipped_vertex;
+	clipped_vertex.push_back(va);
+	clipped_vertex.push_back(vb);
+	clipped_vertex.push_back(vc);
+
+	std::string modes = "zxy";
+
+	for (uint32_t i = 0; i < 3 && clipped_vertex.size() > 0; i++) {
+		clipped_vertex = clip_one_axis(modes[i], clipped_vertex);
 	}
 
 	if (clipped_vertex.size() >= 3) {

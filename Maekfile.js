@@ -43,6 +43,11 @@ check_for_nest();
 if (maek.OS === "windows") {
 	maek.options.CPPFlags.push(
 		"/O2", //optimize
+		/**
+		 * Unmark the below code for debugging
+		 */
+		// "/Od",
+        // "/wd4702",      
 		//include paths for pre-built libraries:
 		`/I${NEST_LIBS}/SDL2/include`,
 		//include directories:
@@ -56,13 +61,13 @@ if (maek.OS === "windows") {
 	);
 } else if (maek.OS === "linux") {
 	maek.options.CPPFlags.push(
-		"-O2", //optimize
+		"-Od", //optimize
 		`-I${NEST_LIBS}/SDL2/include/SDL2`, `-D_THREAD_SAFE`, //SDL include flags
 		"-Isrc", "-Ideps"  //include directories
 	);
 } else if (maek.OS === "macos") {
 	maek.options.CPPFlags.push(
-		"-O2", //optimize
+		"-Od", //optimize
 		`-I${NEST_LIBS}/SDL2/include/SDL2`, `-D_THREAD_SAFE`, //SDL include flags
 		"-Isrc", "-Ideps"  //include directories
 	);
