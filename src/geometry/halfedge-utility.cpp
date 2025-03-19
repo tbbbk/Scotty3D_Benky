@@ -88,7 +88,8 @@ Halfedge_Mesh::FaceRef Halfedge_Mesh::emplace_face(bool boundary) {
 		faces.splice(faces.end(), free_faces, free_faces.begin());
 		*face = Face(next_id++, boundary); //set to default values
 	}
-	face->halfedge = halfedges.end();
+	face->halfedge = halfedges.end(); // Here `.end()` represents a useless iterator, 
+	// which means the face doesn't have relative `Halfedge`
 	return face;
 }
 

@@ -107,6 +107,11 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::add_face(uint32_t sides, fl
 
 	assert(face_halfedges.size() == sides);
 
+	/**
+	 * When add a independent face, there isn't any adjacent face,
+	 * So we "fake" a boundary face to store all the twin halfedge.
+	 * We can image a virtual boundary face around the original face.
+	 */
 	for (uint32_t s = 0; s < sides; ++s) {
 		face_halfedges[s]->next = face_halfedges[(s+1)%sides];
 		face_halfedges[(s+1)%sides]->twin->next = face_halfedges[s]->twin;
@@ -329,10 +334,43 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::extrude_face(FaceRef f) {
  *
  * does not create or destroy mesh elements.
  */
-std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {
+std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {	
 	//A2L1: Flip Edge
+	if (e->on_boundary()) {
+		return std::nullopt;
+	}
+
+	HalfedgeRef& h = e->halfedge;
+	HalfedgeRef& t = h->twin;
 	
-    return std::nullopt;
+	// update the vertex's halfedge
+	h->vertex->halfedge = h->vertex->halfedge->edge == e ? t->next : h->vertex->halfedge;
+	t->vertex->halfedge = t->vertex->halfedge->edge == e ? h->next : t->vertex->halfedge;
+	
+	// update the new start vertex
+	h->vertex = t->next->next->vertex;
+	t->vertex = h->next->next->vertex;
+	
+	// define template variable
+	HalfedgeRef h_next = h->next;
+	HalfedgeRef t_next = t->next;
+	HalfedgeRef h_next2 = h->next->next;
+	HalfedgeRef t_next2 = t->next->next;
+	HalfedgeRef h_last = h;
+	while (h_last->next != h) h_last = h_last->next;
+
+	// update the face and nextabout the changed vertex
+	h_next->face = t->face;
+	t_next->face = h->face;
+	h_next->next = t;
+	t_next->next = h;
+	h_last->next = t_next;
+	
+	// update the h and t
+	h->next = h_next2;
+	t->next = t_next2;
+	t->next->next = h_next;
+	return e;
 }
 
 
