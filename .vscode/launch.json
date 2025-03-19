@@ -7,8 +7,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
-                // "--run-tests",
-                // "a1.task7.resolve"
+                "--run-tests",
+                "a2.l1.flip_edge.basic.simple"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
