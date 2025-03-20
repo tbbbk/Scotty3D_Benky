@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a2.l1.flip_edge.basic.simple"
+                "a2.l2.split_edge.edge.boundary"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

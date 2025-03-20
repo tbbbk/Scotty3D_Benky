@@ -226,9 +226,134 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::bisect_edge(EdgeRef e) {
  */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
 	// A2L2 (REQUIRED): split_edge
-	
-	(void)e; //this line avoids 'unused parameter' warnings. You can delete it as you fill in the function.
-    return std::nullopt;
+	// Get the new vertex
+	// Split the edge e
+	std::optional<VertexRef> optional_v = bisect_edge(e); 
+	assert(optional_v.has_value());
+	VertexRef v = optional_v.value();
+	// Deal with the non-boundary case first
+	if (!(e->halfedge->face->boundary || e->halfedge->twin->face->boundary)) {
+		// Pre-store the halfedge
+		HalfedgeRef h = v->halfedge->twin->next->twin;
+		HalfedgeRef t = v->halfedge->twin;
+		HalfedgeRef h_next = h->next->next;
+		HalfedgeRef h_next2 = h->next->next->next;
+		HalfedgeRef t_next = t->next->next;
+		HalfedgeRef t_next2 = t->next->next->next;
+
+		// Get all the new elements
+		// h means halfedge side, t means twin side
+		EdgeRef edge_h = emplace_edge();
+		HalfedgeRef h_e_h = emplace_halfedge();
+		HalfedgeRef t_e_h = emplace_halfedge();
+		EdgeRef edge_t= emplace_edge();
+		HalfedgeRef h_e_t = emplace_halfedge();
+		HalfedgeRef t_e_t = emplace_halfedge();
+		FaceRef face_h = emplace_face();
+		FaceRef face_t = emplace_face();
+
+		// First: assemable the new halfedges, edges
+		edge_h->sharp = e->sharp;
+		edge_t->sharp = e->sharp;
+		h_e_h->twin = t_e_h; // set twin
+		t_e_h->twin = h_e_h;
+		h_e_t->twin = t_e_t;
+		t_e_t->twin = h_e_t;
+		h_e_h->vertex = v; // set startpoint
+		t_e_h->vertex = h_next2->vertex;
+		h_e_t->vertex = v;
+		t_e_t->vertex = t_next2->vertex;
+		edge_h->halfedge = h_e_h; // connect halfedge and edge
+		edge_t->halfedge = h_e_t;
+		h_e_h->edge = edge_h;
+		t_e_h->edge = edge_h;
+		h_e_t->edge = edge_t;
+		t_e_t->edge = edge_t;
+
+		// Second: set all changed halfedges' next
+		h_e_h->next = h_next2; // set new halfedges' next
+		t_e_h->next = h->next;
+		h_e_t->next = t_next2;
+		t_e_t->next = h->twin;
+		h->next->next->next = t_e_h; // set affected halfedges' next
+		t->next->next->next = t_e_t;
+		h->next = h_e_h;
+		t->next = h_e_t;
+
+		// Third: set face for all effected halfedges
+		face_h->boundary = false;
+		face_t->boundary = false;
+		face_h->halfedge = t_e_h;
+		face_t->halfedge = t_e_t;
+		HalfedgeRef hfedge_h = t_e_h; // iteratively set face for new halfedges for h side;
+		while (hfedge_h->next != t_e_h) {
+			hfedge_h->face = face_h;
+			hfedge_h = hfedge_h->next;
+		}
+		hfedge_h->face = face_h;
+		HalfedgeRef hfedge_t = t_e_t; // iteratively set face for new halfedges for t side;
+		while (hfedge_t->next != t_e_t) {
+			hfedge_t->face = face_t;
+			hfedge_t = hfedge_t->next;
+		}
+		hfedge_t->face = face_t;
+		h_e_h->face = h->face;
+		h_e_t->face = t->face;
+		h->face->halfedge = h; 
+		t->face->halfedge = t; 
+
+		// Forth: set new data
+		interpolate_data({h, h_e_h->next}, h_e_h);
+		interpolate_data({hfedge_h, t_e_h->next}, t_e_h);
+		interpolate_data({t, h_e_t->next}, h_e_t);
+		interpolate_data({hfedge_t, t_e_t->next}, t_e_t);
+		return v;
+	} else {
+		// Pre-store the halfedge
+		HalfedgeRef h = v->halfedge->face->boundary ? v->halfedge->next->twin : v->halfedge->twin->next->twin;
+		HalfedgeRef h_next = h->next->next;
+		HalfedgeRef h_next2 = h->next->next->next;
+
+		// Get all the new elements
+		// h means halfedge side, t means twin side
+		EdgeRef edge_h = emplace_edge();
+		HalfedgeRef h_e_h = emplace_halfedge();
+		HalfedgeRef t_e_h = emplace_halfedge();
+		FaceRef face_h = emplace_face();
+
+		// First: assemable the new halfedges, edges
+		edge_h->sharp = e->sharp;
+		h_e_h->twin = t_e_h; // set twin
+		t_e_h->twin = h_e_h;
+		h_e_h->vertex = v; // set startpoint
+		t_e_h->vertex = h_next2->vertex;
+		edge_h->halfedge = h_e_h; // connect halfedge and edge
+		h_e_h->edge = edge_h;
+		t_e_h->edge = edge_h;
+		
+		// Second: set all changed halfedges' next
+		h_e_h->next = h_next2; // set new halfedges' next
+		t_e_h->next = h->next;
+		h->next->next->next = t_e_h; // set affected halfedges' next
+		h->next = h_e_h;
+
+		// Third: set face for all effected halfedges
+		face_h->boundary = false;
+		face_h->halfedge = t_e_h;
+		HalfedgeRef hfedge_h = t_e_h; // iteratively set face for new halfedges for h side;
+		while (hfedge_h->next != t_e_h) {
+			hfedge_h->face = face_h;
+			hfedge_h = hfedge_h->next;
+		}
+		hfedge_h->face = face_h;
+		h_e_h->face = h->face;
+		h->face->halfedge = h; 
+
+		// Forth: set new data
+		interpolate_data({h, h_e_h->next}, h_e_h);
+		interpolate_data({hfedge_h, t_e_h->next}, t_e_h);
+		return v;
+	}
 }
 
 
