@@ -556,7 +556,151 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 	//Reminder: use interpolate_data() to merge corner_uv / corner_normal data on halfedges
 	// (also works for bone_weights data on vertices!)
 	
-    return std::nullopt;
+	
+	HalfedgeRef h = e->halfedge;
+	HalfedgeRef t = e->halfedge->twin;
+	HalfedgeRef tmp_hf;
+
+
+	// Deal each situation
+	
+	/**
+	 * First: Rejection
+	 * If the collapsed edge is contained within any isolated triangle,
+	 * we rejected this opertion, because it will generate a single line 
+	 */
+	// 
+	VertexRef v_h = h->vertex;
+	VertexRef v_t = t->vertex;
+	v_h->halfedge = h;
+	v_t->halfedge = t;
+	auto get_vertex_edge_number = [](VertexRef v) { 
+		// only for vertex whose halfedge is not halfedges.end()
+		int answer = 0;
+		HalfedgeRef temp = v->halfedge;
+		do {
+			answer++;
+			temp = temp->twin->next;
+		} while (temp->twin->next != v->halfedge);
+		return answer;
+	};
+	
+	// TODO
+	// // h's start point
+	// tmp_hf = v_h->halfedge;
+	// do {
+	// 	if (tmp_hf->next->next->next->vertex == v_h 
+	// 		&& get_vertex_edge_number(tmp_hf->next->next->vertex) == 2) {
+	// 			return std::nullopt;
+	// 	}
+	// 	tmp_hf = tmp_hf->twin->next;
+	// } while (tmp_hf != v_h->halfedge);
+		
+	// // t's start point
+	// tmp_hf = v_t->halfedge;
+	// do {
+	// 	if (tmp_hf->next->next->next->vertex == v_h 
+	// 		&& get_vertex_edge_number(tmp_hf->next->next->vertex) == 2) {
+	// 			return std::nullopt;
+	// 		}
+	// 	tmp_hf = tmp_hf->twin->next;
+	// } while (tmp_hf != v_t->halfedge);
+
+
+	/**
+	 * Second: Create new vertex
+	 * Create the new vertex, including interpolating data
+	 */
+	VertexRef v = emplace_vertex();
+	interpolate_data({v_h, v_t}, v);
+	v->position = (v_h->position + v_t->position) / 2.0f;
+
+
+	/**
+	 * Third: Connectivity
+	 * Here connect the old relative vertex to the new one
+	 */
+	std::vector<std::pair<HalfedgeRef, HalfedgeRef>> from_to_vh;
+	std::vector<std::pair<HalfedgeRef, HalfedgeRef>> from_to_vt;
+
+
+	// h's start point
+	tmp_hf = v_h->halfedge;
+	do{
+		if (tmp_hf != h && tmp_hf->twin != t) {
+			from_to_vh.push_back({tmp_hf, tmp_hf->twin});
+		}	
+		tmp_hf = tmp_hf->twin->next;
+	} while (tmp_hf != v_h->halfedge);
+	
+	// t's start point
+	tmp_hf = v_t->halfedge;
+	do{
+		if (tmp_hf != t && tmp_hf->twin != h) {
+			from_to_vt.push_back({tmp_hf, tmp_hf->twin});
+		}
+		tmp_hf = tmp_hf->twin->next;
+	} while (tmp_hf != v_t->halfedge);
+
+	// vertex h's connectivity
+	for (uint32_t i = 0; i < from_to_vh.size(); i++) {
+		HalfedgeRef from_vh = from_to_vh[i].first;
+		HalfedgeRef to_vh = from_to_vh[i].second;
+		
+		from_vh->vertex = v;
+		if (to_vh->next == h) {
+			to_vh->next = h->next;
+			v->halfedge = from_vh;
+		}
+	}
+	
+	// vertex t's connectivity 
+	for (uint32_t i = 0; i < from_to_vt.size(); i++) {
+		HalfedgeRef from_vt = from_to_vt[i].first;
+		HalfedgeRef to_vt = from_to_vt[i].second;
+
+		from_vt->vertex = v;
+		if (to_vt->next == t) {
+			to_vt->next = t->next;
+		}
+	}
+
+	/**
+	 * Forth: delete the origianle e and triangle (if exists) 
+	 */
+	std::vector<VertexRef> wait_to_erase_vertex;
+	std::vector<EdgeRef> wait_to_erase_edge;
+	std::vector<FaceRef> wait_to_erase_face;
+	std::vector<HalfedgeRef> wait_to_erase_halfedge;
+	wait_to_erase_edge.push_back(e);
+	wait_to_erase_vertex.push_back(v_h);
+	wait_to_erase_vertex.push_back(v_t);
+	h->face->halfedge = h->face->halfedge->next;
+	t->face->halfedge = t->face->halfedge->next;
+	wait_to_erase_halfedge.push_back(h);
+	wait_to_erase_halfedge.push_back(t);
+	tmp_hf = v->halfedge;
+	do {
+		if (tmp_hf->next->next == tmp_hf) {
+			tmp_hf->twin->twin = tmp_hf->next->twin;
+			tmp_hf->next->twin->twin = tmp_hf->twin;
+			tmp_hf->next->twin->edge = tmp_hf->twin->edge;
+			tmp_hf->twin->edge->halfedge = tmp_hf->twin;
+			tmp_hf->next->vertex->halfedge = tmp_hf->twin;
+			wait_to_erase_halfedge.push_back(tmp_hf);
+			wait_to_erase_halfedge.push_back(tmp_hf->next);
+			wait_to_erase_face.push_back(tmp_hf->face);
+			wait_to_erase_edge.push_back(tmp_hf->next->edge);
+		}
+		tmp_hf = tmp_hf->twin->next;
+	} while (tmp_hf != v->halfedge);
+	
+	for (auto x : wait_to_erase_vertex) erase_vertex(x);
+	for (auto x : wait_to_erase_edge) erase_edge(x);
+	for (auto x : wait_to_erase_face) erase_face(x);
+	for (auto x : wait_to_erase_halfedge) erase_halfedge(x);
+
+	return v;
 }
 
 /*
