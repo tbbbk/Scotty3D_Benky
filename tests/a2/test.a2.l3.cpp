@@ -110,3 +110,37 @@ Test test_a2_l3_collapse_edge_edge_boundary("a2.l3.collapse_edge.edge.boundary",
 
 	expect_collapse(mesh, edge, after);
 });
+
+
+/*
+single triangle CASE
+
+Initial mesh:
+0
+|\
+| \
+1--2
+|   \
+|    \ 
+3-----4
+
+Collapse Edge on Edge: 1-2
+
+After mesh:
+Rejection
+*/
+Test test_a2_l3_collapse_edge_isolated_triangle("a2.l3.collapse_edge.isolated.triangle", []() {
+	Halfedge_Mesh mesh = Halfedge_Mesh::from_indexed_faces({
+		Vec3(-1.0f, 1.1f, 0.0f),
+		Vec3(-1.2f, 0.5f, 0.0f), Vec3(1.1f, 0.5f, 0.0f),
+		Vec3(-1.4f,-0.7f, 0.0f), 						Vec3(1.5f, -1.0f, 0.0f)
+	}, {
+		{0, 1, 2}, 
+		{1, 3, 4, 2}
+	});
+
+	Halfedge_Mesh::EdgeRef edge = mesh.halfedges.begin()->next->edge;
+	if (mesh.collapse_edge(edge) == std::nullopt) {
+		throw Test::error("collapse_edge should reject operation, but it didn't!");
+	}
+});
