@@ -590,7 +590,7 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 	tmp_hf = v_h->halfedge;
 	do {
 		if (tmp_hf != h && tmp_hf->next->twin->vertex == v_t && get_vertex_edge_number(tmp_hf->next->vertex) == 2) {
-				return std::nullopt;
+			return std::nullopt;
 		}
 		tmp_hf = tmp_hf->twin->next;
 	} while (tmp_hf != v_h->halfedge);
@@ -599,8 +599,8 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 	tmp_hf = v_t->halfedge;
 	do {
 		if (tmp_hf != t && tmp_hf->next->twin->vertex == v_h && get_vertex_edge_number(tmp_hf->next->vertex) == 2) {
-				return std::nullopt;
-			}
+			return std::nullopt;
+		}
 		tmp_hf = tmp_hf->twin->next;
 	} while (tmp_hf != v_t->halfedge);
 
