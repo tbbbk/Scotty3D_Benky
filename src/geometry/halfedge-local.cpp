@@ -444,8 +444,88 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::extrude_face(FaceRef f) {
 	// Reminder: This function does not update the vertex positions.
 	// Remember to also fill in extrude_helper (A2L4h)
 
-	(void)f;
-    return std::nullopt;
+	HalfedgeRef hf_tmp;
+	
+	/**
+	 * 1. Create x new vertices/faces, 2 * x edges, and 4 * x halfedges
+	 */
+	
+	int v_num = 0;
+	std::vector<VertexRef> new_vertices;
+	std::vector<FaceRef> new_faces;
+	std::vector<EdgeRef> new_edges;
+	std::vector<HalfedgeRef> new_halfedges;
+	
+	hf_tmp = f->halfedge;
+	do {
+		new_faces.push_back(emplace_face());
+
+		new_vertices.push_back(emplace_vertex());
+		new_vertices.push_back(hf_tmp->vertex); // Store the original one to interpolate
+
+		new_edges.push_back(emplace_edge());
+		new_edges.push_back(emplace_edge());
+		new_edges.push_back(hf_tmp->edge); // Store the original one to interpolate
+
+		new_halfedges.push_back(emplace_halfedge());
+		new_halfedges.push_back(emplace_halfedge());
+		new_halfedges.push_back(emplace_halfedge());
+		new_halfedges.push_back(emplace_halfedge());
+		new_halfedges.push_back(hf_tmp); // Store the original one to maintain the connectivity
+		v_num++;
+		hf_tmp = hf_tmp->next;
+	} while (hf_tmp != f->halfedge);
+
+	/**
+	 * 2. Maintain the connectivity
+	 */
+	// New vertices 
+	for (int i = 0; i < v_num; i++) {
+		new_faces[i]->halfedge = new_halfedges[5 * i]; 
+		// new_faces[i]->boundary = f->boundary; // TODO: Do we need reset this part?
+
+		new_vertices[2 * i]->halfedge = new_halfedges[5 * i];
+		new_vertices[2 * i]->position = new_vertices[2 * i + 1]->position;
+		new_vertices[2 * i]->bone_weights = new_vertices[2 * i + 1]->bone_weights;
+		
+		new_edges[3 * i]->halfedge = new_halfedges[5 * i];
+		new_edges[3 * i]->sharp = new_edges[3 * i  + 2]->sharp;
+		new_edges[3 * i + 1]->halfedge = new_halfedges[5 * i + 1];
+		new_edges[3 * i + 1]->sharp = new_edges[3 * i + 2]->sharp;
+
+		// Process each halfedge's connectivity
+		new_halfedges[5 * i]->next = new_halfedges[5 * i + 4];
+		new_halfedges[5 * i]->twin = new_halfedges[5 * (((i - 1) % v_num + v_num) % v_num) + 2];
+		new_halfedges[5 * i]->face = new_faces[i];
+		new_halfedges[5 * i]->vertex = new_vertices[2 * i];
+		new_halfedges[5 * i]->edge = new_edges[3 * i];
+
+		new_halfedges[5 * i + 1]->next = new_halfedges[5 * i];
+		new_halfedges[5 * i + 1]->twin = new_halfedges[5 * i + 3];
+		new_halfedges[5 * i + 1]->face = new_faces[i];
+		new_halfedges[5 * i + 1]->vertex = new_vertices[2 * ((i + 1) % v_num)];
+		new_halfedges[5 * i + 1]->edge = new_edges[3 * i + 1];
+
+		new_halfedges[5 * i + 2]->next = new_halfedges[5 * i + 1];
+		new_halfedges[5 * i + 2]->twin = new_halfedges[5 * ((i + 1) % v_num)];
+		new_halfedges[5 * i + 2]->face = new_faces[i];
+		new_halfedges[5 * i + 2]->vertex = new_vertices[2 * ((i + 1) % v_num) + 1];
+		new_halfedges[5 * i + 2]->edge = new_edges[3 * ((i + 1) % v_num)];
+
+		new_halfedges[5 * i + 3]->next = new_halfedges[5 * ((i + 1) % v_num) + 3];
+		new_halfedges[5 * i + 3]->twin = new_halfedges[5 * i + 1];
+		new_halfedges[5 * i + 3]->face = f;
+		new_halfedges[5 * i + 3]->vertex = new_vertices[2 * i];
+		new_halfedges[5 * i + 3]->edge = new_edges[3 * i + 1];
+
+		new_halfedges[5 * i + 4]->next = new_halfedges[5 * i + 2];
+		new_halfedges[5 * i + 4]->face = new_faces[i];
+		// TODO: we didn't interpolate the corner_uv and corner_normal here
+	}
+	
+	f->boundary = false;
+	f->halfedge = new_halfedges[3];
+    return f;
 }
 
 /*
@@ -789,6 +869,24 @@ void Halfedge_Mesh::extrude_positions(FaceRef face, Vec3 move, float shrink) {
 	// use mesh navigation to get starting positions from the surrounding faces,
 	// compute the centroid from these positions + use to shrink,
 	// offset by move
-	
+	std::vector<VertexRef> all_vertices;
+	std::vector<VertexCRef> const_vertices;
+	HalfedgeRef h = face->halfedge;
+	do {
+		all_vertices.push_back(h->vertex);
+		const_vertices.push_back(h->vertex);
+		h = h->next;
+	} while (h != face->halfedge);
+
+	Vec3 center_position = Vec3(0.0f);
+	for (auto v : all_vertices) {
+		center_position += v->position / (float)all_vertices.size();
+	}
+
+	for (auto v : all_vertices) {
+		v->position = center_position + (v->position - center_position) * (1 - shrink);
+		interpolate_data(const_vertices, v);
+		v->position += move;
+	}
 }
 
