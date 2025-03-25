@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a2.l3.collapse_edge.isolated.triangle"
+                "a2.l4.extrude_face.basic.expand"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
