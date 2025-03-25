@@ -539,6 +539,7 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::extrude_face(FaceRef f) {
  *
  * does not create or destroy mesh elements.
  */
+// TODO there are some bugs
 std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {	
 	//A2L1: Flip Edge
 	if (e->on_boundary()) {
@@ -549,32 +550,38 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {
 	HalfedgeRef& t = h->twin;
 	
 	// update the vertex's halfedge
-	h->vertex->halfedge = h->vertex->halfedge->edge == e ? t->next : h->vertex->halfedge;
-	t->vertex->halfedge = t->vertex->halfedge->edge == e ? h->next : t->vertex->halfedge;
+	h->vertex->halfedge = h->vertex->halfedge == h ? h->twin->next : h->vertex->halfedge;
+	t->vertex->halfedge = t->vertex->halfedge == t ? t->twin->next : t->vertex->halfedge;
 	
-	// update the new start vertex
-	h->vertex = t->next->next->vertex;
-	t->vertex = h->next->next->vertex;
-	
-	// define template variable
+	// update the h and t
 	HalfedgeRef h_next = h->next;
 	HalfedgeRef t_next = t->next;
 	HalfedgeRef h_next2 = h->next->next;
 	HalfedgeRef t_next2 = t->next->next;
 	HalfedgeRef h_last = h;
+	HalfedgeRef t_last = t;
 	while (h_last->next != h) h_last = h_last->next;
+	while (t_last->next != t) t_last = t_last->next;
 
+	// make sure face's halfedge is still valid after flip
+	h->face->halfedge = h;
+	t->face->halfedge = t;
+
+	// update the new start vertex
+	h->vertex = t_next2->vertex;
+	t->vertex = h_next2->vertex;
+	
 	// update the face and nextabout the changed vertex
 	h_next->face = t->face;
 	t_next->face = h->face;
 	h_next->next = t;
 	t_next->next = h;
 	h_last->next = t_next;
-	
+	t_last->next = h_next;
+
 	// update the h and t
 	h->next = h_next2;
 	t->next = t_next2;
-	t->next->next = h_next;
 	return e;
 }
 
