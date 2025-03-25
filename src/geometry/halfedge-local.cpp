@@ -869,6 +869,24 @@ void Halfedge_Mesh::extrude_positions(FaceRef face, Vec3 move, float shrink) {
 	// use mesh navigation to get starting positions from the surrounding faces,
 	// compute the centroid from these positions + use to shrink,
 	// offset by move
-	
+	std::vector<VertexRef> all_vertices;
+	std::vector<VertexCRef> const_vertices;
+	HalfedgeRef h = face->halfedge;
+	do {
+		all_vertices.push_back(h->vertex);
+		const_vertices.push_back(h->vertex);
+		h = h->next;
+	} while (h != face->halfedge);
+
+	Vec3 center_position = Vec3(0.0f);
+	for (auto v : all_vertices) {
+		center_position += v->position / (float)all_vertices.size();
+	}
+
+	for (auto v : all_vertices) {
+		v->position = center_position + (v->position - center_position) * (1 - shrink);
+		interpolate_data(const_vertices, v);
+		v->position += move;
+	}
 }
 
