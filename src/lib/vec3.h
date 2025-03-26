@@ -178,13 +178,6 @@ struct Vec3 {
 		return r;
 	}
 
-	Vec3 cross(const Vec3& other) const {
-        float crossX = y * other.z - z * other.y;
-        float crossY = z * other.x - x * other.z;
-        float crossZ = x * other.y - y * other.x;
-        return Vec3(crossX, crossY, crossZ);
-    }
-
 	union {
 		struct {
 			float x;

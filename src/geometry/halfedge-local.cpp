@@ -625,69 +625,71 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::dissolve_vertex(VertexRef v
 		 */
 		// 
 		return std::nullopt;
-		// tmp_hf = v->halfedge;
-		// HalfedgeRef ori_boundary_pre_hf;
-		// HalfedgeRef h = emplace_halfedge();
-		// HalfedgeRef t = emplace_halfedge();
-		// EdgeRef boundary_edge = emplace_edge();
-		// boundary_edge->halfedge = h;
-		// h->twin = t;
-		// t->twin = h;
-		// do {
-		// 	std::vector<HalfedgeRef> tmp_hf_vector;
-		// 	if (!tmp_hf->face->boundary) {
-		// 		HalfedgeRef tmp_tmp_hf = tmp_hf;
-		// 		if (tmp_hf->twin->face->boundary) {
-		// 			t->vertex = tmp_hf->twin->vertex;
-		// 		}
+		/*
+		tmp_hf = v->halfedge;
+		HalfedgeRef ori_boundary_pre_hf;
+		HalfedgeRef h = emplace_halfedge();
+		HalfedgeRef t = emplace_halfedge();
+		EdgeRef boundary_edge = emplace_edge();
+		boundary_edge->halfedge = h;
+		h->twin = t;
+		t->twin = h;
+		do {
+			std::vector<HalfedgeRef> tmp_hf_vector;
+			if (!tmp_hf->face->boundary) {
+				HalfedgeRef tmp_tmp_hf = tmp_hf;
+				if (tmp_hf->twin->face->boundary) {
+					t->vertex = tmp_hf->twin->vertex;
+				}
 				
-		// 		do {
-		// 			tmp_hf_vector.push_back(tmp_tmp_hf);
-		// 			tmp_tmp_hf = tmp_tmp_hf->next;
-		// 			if (tmp_tmp_hf->twin->face->boundary) {
-		// 				h->vertex = tmp_tmp_hf->vertex;
-		// 				t->next = tmp_tmp_hf->twin->next;
-		// 			}
-		// 		} while (tmp_tmp_hf->next != tmp_hf);
+				do {
+					tmp_hf_vector.push_back(tmp_tmp_hf);
+					tmp_tmp_hf = tmp_tmp_hf->next;
+					if (tmp_tmp_hf->twin->face->boundary) {
+						h->vertex = tmp_tmp_hf->vertex;
+						t->next = tmp_tmp_hf->twin->next;
+					}
+				} while (tmp_tmp_hf->next != tmp_hf);
 
-		// 		tmp_hf->twin->vertex->halfedge = tmp_hf->next;
-		// 		final_f = tmp_hf->face;
-		// 		final_f->halfedge = h;
-		// 	} else {
-		// 		tmp_hf_vector.push_back(h);
-		// 		t->face = tmp_hf->face;
-		// 		tmp_hf->face->halfedge = t;
-		// 		tmp_hf->twin->vertex->halfedge = h;
-		// 	}
-		// 	if (tmp_hf->twin->face->boundary) {
-		// 		ori_boundary_pre_hf = tmp_hf->twin;
-		// 	}
-		// 	hf_loop.push_back(tmp_hf_vector);
-		// 	hf_wait_erase.push_back(tmp_hf);
-		// 	hf_wait_erase.push_back(tmp_hf->twin);
-		// 	erase_edge(tmp_hf->edge);
-		// 	if (tmp_hf->face != final_f && !tmp_hf->face->boundary) {
-		// 		erase_face(tmp_hf->face);
-		// 	}
-		// 	tmp_hf = tmp_hf->twin->next;
-		// } while (tmp_hf != v->halfedge);
-		// for (int i = 0; i < hf_loop.size(); i++) {
-		// 	hf_loop[i].back()->next = hf_loop[(i + 1) % hf_loop.size()][0];
-		// 	for (auto hf : hf_loop[i]) {
-		// 		hf->face = final_f;
-		// 	}
-		// 	erase_halfedge(hf_wait_erase[2 * i]);
-		// 	erase_halfedge(hf_wait_erase[2 * i + 1]);
-		// }
+				tmp_hf->twin->vertex->halfedge = tmp_hf->next;
+				final_f = tmp_hf->face;
+				final_f->halfedge = h;
+			} else {
+				tmp_hf_vector.push_back(h);
+				t->face = tmp_hf->face;
+				tmp_hf->face->halfedge = t;
+				tmp_hf->twin->vertex->halfedge = h;
+			}
+			if (tmp_hf->twin->face->boundary) {
+				ori_boundary_pre_hf = tmp_hf->twin;
+			}
+			hf_loop.push_back(tmp_hf_vector);
+			hf_wait_erase.push_back(tmp_hf);
+			hf_wait_erase.push_back(tmp_hf->twin);
+			erase_edge(tmp_hf->edge);
+			if (tmp_hf->face != final_f && !tmp_hf->face->boundary) {
+				erase_face(tmp_hf->face);
+			}
+			tmp_hf = tmp_hf->twin->next;
+		} while (tmp_hf != v->halfedge);
+		for (int i = 0; i < hf_loop.size(); i++) {
+			hf_loop[i].back()->next = hf_loop[(i + 1) % hf_loop.size()][0];
+			for (auto hf : hf_loop[i]) {
+				hf->face = final_f;
+			}
+			erase_halfedge(hf_wait_erase[2 * i]);
+			erase_halfedge(hf_wait_erase[2 * i + 1]);
+		}
 
-		// tmp_hf = t->next;
-		// while (tmp_hf->next != ori_boundary_pre_hf) {
-		// 	tmp_hf = tmp_hf->next;
-		// }
-		// tmp_hf->next = t;
+		tmp_hf = t->next;
+		while (tmp_hf->next != ori_boundary_pre_hf) {
+			tmp_hf = tmp_hf->next;
+		}
+		tmp_hf->next = t;
 		
-		// erase_vertex(v);
-		// return final_f;
+		erase_vertex(v);
+		return final_f;
+		*/
 	} else {
 		tmp_hf = v->halfedge;
 		do {
@@ -711,21 +713,21 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::dissolve_vertex(VertexRef v
 		} while (tmp_hf != v->halfedge);
 
 		// The test case is given in CW...
-		Vec3 A = hf_loop[0][0]->vertex->position;
-		Vec3 B = hf_loop[1][0]->vertex->position;
-		Vec3 C = hf_loop[2][0]->vertex->position;
+		Vec3 f_normal = v->halfedge->face->normal();
+		Vec3 A = v->halfedge->vertex->position;
+		Vec3 B = v->halfedge->next->vertex->position;
+		Vec3 C = v->halfedge->next->next->vertex->position;
 		Vec3 AB = B - A;
 		Vec3 BC = C - B;
-		Vec3 cross_product = AB.cross(BC);
-		bool CCW = cross_product.z > 0 ? true : false;
+		Vec3 dot_product = cross(AB, BC) * f_normal;
+		bool CCW = (dot_product.x + dot_product.y + dot_product.z > 0);
 
 		final_f->halfedge = hf_loop[0][0];
-		erase_vertex(v);
 		for (int i = 0; i < hf_loop.size(); i++) {
-			if (CCW) {
+			if (!CCW) {
 				hf_loop[i].back()->next = hf_loop[(i + 1) % hf_loop.size()][0];
 			} else {
-				hf_loop[i].back()->next = hf_loop[((i - 1) % hf_loop.size() + hf_loop.size()) % hf_loop.size()][0];
+				hf_loop[i].back()->next = hf_loop[(i - 1 + hf_loop.size()) % hf_loop.size()][0];
 			}
 			for (auto hf : hf_loop[i]) {
 				hf->face = final_f;
@@ -733,6 +735,8 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::dissolve_vertex(VertexRef v
 			erase_halfedge(hf_wait_erase[2 * i]);
 			erase_halfedge(hf_wait_erase[2 * i + 1]);
 		}
+
+		erase_vertex(v);
 		return final_f;
 	}
 

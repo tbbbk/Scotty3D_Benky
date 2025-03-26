@@ -161,7 +161,7 @@ Test test_a2_lx1_dissolve_vertex_basic_tris_CCW("a2.lx1.dissolve_vertex.basic.tr
 		Vec3{-0.5f, 0.0f, -0.5f},   Vec3{-0.5f, 0.0f, 0.5f},
         Vec3{0.5f, 0.0f, -0.5f},    Vec3{0.5f, 0.0f, 0.5f}
 	}, {
-		{2, 0, 1, 3}
+		{2, 3, 1, 0}
 	});
 
 	expect_erase(mesh, vertex, after);
