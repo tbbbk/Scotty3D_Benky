@@ -7,10 +7,10 @@
             "request": "launch",
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
-                "--run-tests",
-                "a2.lx1.dissolve_vertex.basic.tris",
-                "--scene",
-                "D:\\Desktop\\Computer Graphics\\Scotty3D\\media\\js3d\\A2-dodecahedron.js3d"
+                // "--run-tests",
+                // "a2.lx3.collapse_face.edge.boundary",
+                // "--scene",
+                // "D:\\Desktop\\Computer Graphics\\Scotty3D\\media\\js3d\\A2-dodecahedron.js3d"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

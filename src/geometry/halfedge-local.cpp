@@ -753,10 +753,99 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::dissolve_vertex(VertexRef v
  */
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::dissolve_edge(EdgeRef e) {
 	// A2Lx2 (OPTIONAL): dissolve_edge
-
 	//Reminder: use interpolate_data() to merge corner_uv / corner_normal data
-	
-    return std::nullopt;
+	HalfedgeRef h = e->halfedge;
+	HalfedgeRef t = h->twin;
+
+	if (e->on_boundary()) {
+		HalfedgeRef tmp_hf = (h->face->boundary ? t : h)->next;
+		do {
+			if (tmp_hf->edge->on_boundary()) {
+				return std::nullopt;
+			}
+			tmp_hf = tmp_hf->next;
+		} while (tmp_hf == h || tmp_hf == t);
+	} else {
+		auto get_vertex_edge_number = [](VertexRef v) { 
+			// only for vertex whose halfedge is not halfedges.end()
+			int answer = 0;
+			HalfedgeRef temp = v->halfedge;
+			do {
+				answer++;
+				temp = temp->twin->next;
+			} while (temp != v->halfedge);
+			return answer;
+		};
+
+		if (get_vertex_edge_number(h->vertex) == 2 
+		|| get_vertex_edge_number(t->vertex) == 2) {
+			return std::nullopt;
+		}
+
+	}
+
+	if (e->on_boundary()) {
+		FaceRef erased_face = h->face;
+		FaceRef merged_face = t->face;
+		// assume h is inside
+		if (e->halfedge->face->boundary) {
+			t = e->halfedge;
+			h = t->twin;
+		}
+
+		HalfedgeRef h_last = h;
+		do {
+			h_last = h_last->next;
+			h_last->face = merged_face;
+		} while (h_last->next != h);
+
+		HalfedgeRef t_last = t;
+		do {
+			t_last = t_last->next;
+		} while (t_last->next != t);
+
+		h_last->next = t->next;
+		t_last->next = h->next;
+
+		h->vertex->halfedge = t->next;
+		t->vertex->halfedge = h->next;
+		merged_face->halfedge = h->next;
+
+		erase_edge(e);
+		erase_halfedge(h);
+		erase_halfedge(t);
+		erase_face(erased_face);
+		return merged_face;
+	} else {
+		FaceRef merged_face = h->face;
+		FaceRef erased_face = t->face;
+		
+		HalfedgeRef h_last = h;
+		do {
+			h_last = h_last->next;
+		} while (h_last->next != h);
+		
+		HalfedgeRef t_last = t;
+		do {
+			t_last = t_last->next;
+			t_last->face = merged_face;
+		} while (t_last->next != t);
+
+		h_last->next = t->next;
+		t_last->next = h->next;
+
+		h->vertex->halfedge = t->next;
+		t->vertex->halfedge = h->next;
+		merged_face->halfedge = h->next;
+
+		erase_edge(e);
+		erase_halfedge(h);
+		erase_halfedge(t);
+		erase_face(erased_face);
+
+		return merged_face;
+	}
+
 }
 
 /* collapse_edge: collapse edge to a vertex at its middle
@@ -929,7 +1018,66 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(FaceRef f) 
 	//Reminder: use interpolate_data() to merge corner_uv / corner_normal data on halfedges
 	// (also works for bone_weights data on vertices!)
 
-    return std::nullopt;
+	if (f->boundary) return std::nullopt;
+
+	VertexRef new_vertex = emplace_vertex();
+	std::vector<VertexCRef> const_old_vertices;
+	std::vector<VertexRef> old_vertices;
+	std::vector<VertexRef> vertices_adjust;
+	std::vector<HalfedgeRef> halfedges_wait_erased;
+	std::vector<HalfedgeRef> halfedges_last;
+	std::vector<HalfedgeRef> halfedges_next;
+	std::vector<EdgeRef> edges_wait_erased;
+	HalfedgeRef hf_tmp = f->halfedge;
+
+	do {
+		if (hf_tmp->twin->face->boundary) {
+			return std::nullopt;
+		}
+		int num = 1;
+		HalfedgeRef hf_last = hf_tmp->twin;
+		do {
+			hf_last = hf_last->next;
+			num += 1;
+		} while (hf_last->next != hf_tmp->twin);
+		if (num == 3) {
+			return std::nullopt;
+		} else {
+			std::cout << num;
+		}
+		hf_last->face->halfedge = hf_last;
+		halfedges_last.push_back(hf_last);
+		halfedges_next.push_back(hf_tmp->twin->next);
+
+		old_vertices.push_back(hf_tmp->vertex);
+		const_old_vertices.push_back(hf_tmp->vertex);
+		halfedges_wait_erased.push_back(hf_tmp);
+		halfedges_wait_erased.push_back(hf_tmp->twin);
+		edges_wait_erased.push_back(hf_tmp->edge);
+		hf_tmp = hf_tmp->next;
+	} while (hf_tmp != f->halfedge);
+	
+	new_vertex->halfedge = hf_tmp->twin->next;
+	interpolate_data(const_old_vertices, new_vertex);
+	for (auto v : old_vertices) {
+		new_vertex->position += v->position / (float) const_old_vertices.size();
+		hf_tmp = v->halfedge;
+		do {
+			hf_tmp->vertex = new_vertex;
+			hf_tmp = hf_tmp->twin->next;
+		} while (hf_tmp != v->halfedge);
+		erase_vertex(v);
+	}
+	assert(halfedges_last.size() == halfedges_next.size());
+	for (int i = 0; i < halfedges_last.size(); i++) {
+		halfedges_last[i]->next = halfedges_next[i];
+		halfedges_last[i]->face->halfedge = halfedges_last[i];
+	} 
+	for (auto hf : halfedges_wait_erased) erase_halfedge(hf);
+	for (auto edge : edges_wait_erased) erase_edge(edge);
+	erase_face(f);
+
+    return new_vertex;
 }
 
 /*

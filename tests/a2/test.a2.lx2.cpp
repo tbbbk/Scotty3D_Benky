@@ -125,3 +125,41 @@ Test test_a2_lx2_dissolve_edge_edge_boundary("a2.lx2.dissolve_edge.edge.boundary
 		throw Test::error("EDGE CASE: Did not reject erasing a boundary edge!");
 	}
 });
+
+/*
+EDGE CASE
+
+Initial mesh:
+0---1---2
+| \ |   |
+|   3   |
+|   |   |
+4---5---6
+
+Dissolve Edge on Edge: 0-1
+*/
+Test test_a2_lx2_dissolve_edge_edge_boundary_valid("a2.lx2.dissolve_edge.edge.boundary.valid", []() {
+	Halfedge_Mesh mesh = Halfedge_Mesh::from_indexed_faces({
+        Vec3{-1, 1, 0}, Vec3{0, 1, 0}, Vec3{1, 1, 0}, 
+						Vec3{0, 0, 0},
+        Vec3{-1, -1, 0}, Vec3{0, -1, 0}, Vec3{1, -1, 0}
+	}, {
+        {0, 3, 1},
+        {1, 3, 5, 6, 2},
+        {0, 4, 5, 3}
+	});
+	Halfedge_Mesh::EdgeRef edge = mesh.halfedges.begin()->next->next->edge;
+	// mesh.dissolve_edge(edge);
+	// std::cout<<mesh.describe();
+
+	Halfedge_Mesh after = Halfedge_Mesh::from_indexed_faces({
+        Vec3{-1, 1, 0}, Vec3{0, 1, 0}, Vec3{1, 1, 0}, 
+						Vec3{0, 0, 0},
+        Vec3{-1, -1, 0}, Vec3{0, -1, 0}, Vec3{1, -1, 0}
+	}, {
+        {1, 3, 5, 6, 2},
+        {0, 4, 5, 3}
+	});
+	
+	expect_erase(mesh, edge, after);
+});
