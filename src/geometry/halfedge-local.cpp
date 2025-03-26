@@ -753,10 +753,99 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::dissolve_vertex(VertexRef v
  */
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::dissolve_edge(EdgeRef e) {
 	// A2Lx2 (OPTIONAL): dissolve_edge
-
 	//Reminder: use interpolate_data() to merge corner_uv / corner_normal data
-	
-    return std::nullopt;
+	HalfedgeRef h = e->halfedge;
+	HalfedgeRef t = h->twin;
+
+	if (e->on_boundary()) {
+		HalfedgeRef tmp_hf = (h->face->boundary ? t : h)->next;
+		do {
+			if (tmp_hf->edge->on_boundary()) {
+				return std::nullopt;
+			}
+			tmp_hf = tmp_hf->next;
+		} while (tmp_hf == h || tmp_hf == t);
+	} else {
+		auto get_vertex_edge_number = [](VertexRef v) { 
+			// only for vertex whose halfedge is not halfedges.end()
+			int answer = 0;
+			HalfedgeRef temp = v->halfedge;
+			do {
+				answer++;
+				temp = temp->twin->next;
+			} while (temp != v->halfedge);
+			return answer;
+		};
+
+		if (get_vertex_edge_number(h->vertex) == 2 
+		|| get_vertex_edge_number(t->vertex) == 2) {
+			return std::nullopt;
+		}
+
+	}
+
+	if (e->on_boundary()) {
+		FaceRef erased_face = h->face;
+		FaceRef merged_face = t->face;
+		// assume h is inside
+		if (e->halfedge->face->boundary) {
+			t = e->halfedge;
+			h = t->twin;
+		}
+
+		HalfedgeRef h_last = h;
+		do {
+			h_last = h_last->next;
+			h_last->face = merged_face;
+		} while (h_last->next != h);
+
+		HalfedgeRef t_last = t;
+		do {
+			t_last = t_last->next;
+		} while (t_last->next != t);
+
+		h_last->next = t->next;
+		t_last->next = h->next;
+
+		h->vertex->halfedge = t->next;
+		t->vertex->halfedge = h->next;
+		merged_face->halfedge = h->next;
+
+		erase_edge(e);
+		erase_halfedge(h);
+		erase_halfedge(t);
+		erase_face(erased_face);
+		return merged_face;
+	} else {
+		FaceRef merged_face = h->face;
+		FaceRef erased_face = t->face;
+		
+		HalfedgeRef h_last = h;
+		do {
+			h_last = h_last->next;
+		} while (h_last->next != h);
+		
+		HalfedgeRef t_last = t;
+		do {
+			t_last = t_last->next;
+			t_last->face = merged_face;
+		} while (t_last->next != t);
+
+		h_last->next = t->next;
+		t_last->next = h->next;
+
+		h->vertex->halfedge = t->next;
+		t->vertex->halfedge = h->next;
+		merged_face->halfedge = h->next;
+
+		erase_edge(e);
+		erase_halfedge(h);
+		erase_halfedge(t);
+		erase_face(erased_face);
+
+		return merged_face;
+	}
+
 }
 
 /* collapse_edge: collapse edge to a vertex at its middle
