@@ -1018,7 +1018,66 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(FaceRef f) 
 	//Reminder: use interpolate_data() to merge corner_uv / corner_normal data on halfedges
 	// (also works for bone_weights data on vertices!)
 
-    return std::nullopt;
+	if (f->boundary) return std::nullopt;
+
+	VertexRef new_vertex = emplace_vertex();
+	std::vector<VertexCRef> const_old_vertices;
+	std::vector<VertexRef> old_vertices;
+	std::vector<VertexRef> vertices_adjust;
+	std::vector<HalfedgeRef> halfedges_wait_erased;
+	std::vector<HalfedgeRef> halfedges_last;
+	std::vector<HalfedgeRef> halfedges_next;
+	std::vector<EdgeRef> edges_wait_erased;
+	HalfedgeRef hf_tmp = f->halfedge;
+
+	do {
+		if (hf_tmp->twin->face->boundary) {
+			return std::nullopt;
+		}
+		int num = 1;
+		HalfedgeRef hf_last = hf_tmp->twin;
+		do {
+			hf_last = hf_last->next;
+			num += 1;
+		} while (hf_last->next != hf_tmp->twin);
+		if (num == 3) {
+			return std::nullopt;
+		} else {
+			std::cout << num;
+		}
+		hf_last->face->halfedge = hf_last;
+		halfedges_last.push_back(hf_last);
+		halfedges_next.push_back(hf_tmp->twin->next);
+
+		old_vertices.push_back(hf_tmp->vertex);
+		const_old_vertices.push_back(hf_tmp->vertex);
+		halfedges_wait_erased.push_back(hf_tmp);
+		halfedges_wait_erased.push_back(hf_tmp->twin);
+		edges_wait_erased.push_back(hf_tmp->edge);
+		hf_tmp = hf_tmp->next;
+	} while (hf_tmp != f->halfedge);
+	
+	new_vertex->halfedge = hf_tmp->twin->next;
+	interpolate_data(const_old_vertices, new_vertex);
+	for (auto v : old_vertices) {
+		new_vertex->position += v->position / (float) const_old_vertices.size();
+		hf_tmp = v->halfedge;
+		do {
+			hf_tmp->vertex = new_vertex;
+			hf_tmp = hf_tmp->twin->next;
+		} while (hf_tmp != v->halfedge);
+		erase_vertex(v);
+	}
+	assert(halfedges_last.size() == halfedges_next.size());
+	for (int i = 0; i < halfedges_last.size(); i++) {
+		halfedges_last[i]->next = halfedges_next[i];
+		halfedges_last[i]->face->halfedge = halfedges_last[i];
+	} 
+	for (auto hf : halfedges_wait_erased) erase_halfedge(hf);
+	for (auto edge : edges_wait_erased) erase_edge(edge);
+	erase_face(f);
+
+    return new_vertex;
 }
 
 /*
