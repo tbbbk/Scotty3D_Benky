@@ -129,3 +129,40 @@ Test test_a2_lx1_dissolve_vertex_edge_boundary("a2.lx1.dissolve_vertex.edge.boun
 		throw Test::error("EDGE CASE: Did not reject erasing a boundary vertex!");
 	}
 });
+
+/*
+BASIC CASE in CCW
+
+Initial mesh:
+1---3
+|\ /|
+| 4 |
+|/ \|
+0---2
+
+Dissolve Vertex on Vertex: 4
+*/
+Test test_a2_lx1_dissolve_vertex_basic_tris_CCW("a2.lx1.dissolve_vertex.basic.tris.CCW", []() {
+	Halfedge_Mesh mesh = Halfedge_Mesh::from_indexed_faces({
+        Vec3{-0.5f, 0.0f, -0.5f},   Vec3{-0.5f, 0.0f, 0.5f},
+        Vec3{0.5f, 0.0f, -0.5f},    Vec3{0.5f, 0.0f, 0.5f},
+        Vec3{0.0f, 0.0f, 0.0f}
+	}, {
+		{3, 4, 2}, 
+        {0, 4, 1}, 
+        {2, 4, 0}, 
+        {1, 4, 3}
+	});
+	
+    Halfedge_Mesh::VertexRef vertex = mesh.vertices.begin();
+	std::advance(vertex, 4);
+
+	Halfedge_Mesh after = Halfedge_Mesh::from_indexed_faces({
+		Vec3{-0.5f, 0.0f, -0.5f},   Vec3{-0.5f, 0.0f, 0.5f},
+        Vec3{0.5f, 0.0f, -0.5f},    Vec3{0.5f, 0.0f, 0.5f}
+	}, {
+		{2, 0, 1, 3}
+	});
+
+	expect_erase(mesh, vertex, after);
+});

@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a2.l4.extrude_face.basic.expand"
+                "a2.lx1.dissolve_vertex.basic.tris"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
