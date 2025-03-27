@@ -1322,8 +1322,80 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::weld_edges(EdgeRef e, EdgeR
 	//A2Lx8: Weld Edges
 
 	//Reminder: use interpolate_data() to merge bone_weights data on vertices!
+	
+	if (!e->on_boundary() || !e2->on_boundary()) return std::nullopt;
 
-    return std::nullopt;
+	HalfedgeRef e_h = e->halfedge->face->boundary ? e->halfedge : e->halfedge->twin;
+	HalfedgeRef e2_h = e2->halfedge->face->boundary ? e2->halfedge : e2->halfedge->twin;
+
+	HalfedgeRef tmp_hf = e_h;
+	do {
+		if (tmp_hf == e2_h) return std::nullopt;
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf != e_h);
+	// if (tmp_hf == e2_h) return std::nullopt;
+	// tmp_hf->next = e2_h->next;
+
+	FaceRef f_final = e2_h->face;
+	FaceRef erase_f = e_h->face;
+	
+	interpolate_data({e_h, e2_h->twin}, e_h);
+	interpolate_data({e_h->twin, e2_h}, e_h->twin);
+	interpolate_data({e_h->vertex, e2_h->twin->vertex}, e_h->vertex);
+	interpolate_data({e_h->twin->vertex, e2_h->vertex}, e_h->twin->vertex);
+	
+	e_h->vertex->position = (e_h->vertex->position + e2_h->twin->vertex->position) / 2.0f;
+	e_h->twin->vertex->position = (e_h->twin->vertex->position + e2_h->vertex->position) / 2.0f;
+	erase_vertex(e2_h->vertex);
+	erase_vertex(e2_h->twin->vertex);
+
+	tmp_hf = e2_h;
+	do {
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf->next != e2_h);
+	HalfedgeRef e2_last = tmp_hf;
+
+	tmp_hf = e2_h->twin;
+	do {
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf->next != e2_h->twin);
+	HalfedgeRef e2_twin_last = tmp_hf;
+
+	tmp_hf = e_h;
+	do {
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf->next != e_h);
+	HalfedgeRef e_last = tmp_hf;
+
+	// tmp_hf = e_h->twin;
+	// do {
+	// 	tmp_hf = tmp_hf->next;
+	// } while (tmp_hf->next != e_h->twin);
+	// HalfedgeRef e_twin_last = tmp_hf;
+	
+	e2_last->next = e_h->next;
+	e2_twin_last->next = e_h;
+	e_last->next = e2_h->next;
+	e2_h->next->vertex = e_h->vertex;
+	e2_h->twin->next->vertex = e_h->twin->vertex;
+	e_h->face = e2_h->twin->face;
+	e_h->face->halfedge = e_h->next;
+	e_h->next = e2_h->twin->next;
+	e2_h->twin->face->halfedge = e_h;
+
+	erase_edge(e2_h->edge);
+	erase_halfedge(e2_h->twin);
+	erase_halfedge(e2_h);
+	erase_face(erase_f);
+
+	f_final->halfedge = e_last;
+	tmp_hf = e_last;
+	do {
+		tmp_hf->face = f_final;
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf != e_last);
+
+    return e;
 }
 
 

@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a2.lx7.make_boundary.basic.tri",
+                "a2.lx8.weld_edges.basic.simple",
                 // "--scene",
                 // "D:\\Desktop\\Computer Graphics\\Scotty3D\\media\\js3d\\A2-dodecahedron.js3d"
             ],
