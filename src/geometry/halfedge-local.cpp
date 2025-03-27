@@ -462,8 +462,50 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_vertex(VertexRef v) {
 	// Reminder: This function does not update the vertex positions.
 	// Remember to also fill in bevel_vertex_helper (A2Lx5h)
 
-	(void)v;
-    return std::nullopt;
+	FaceRef new_face = emplace_face();
+	std::vector<VertexRef> new_vertices;
+	std::vector<EdgeRef> new_edges;
+	std::vector<HalfedgeRef> new_halfedges;
+	std::vector<HalfedgeRef> adjust_halfedges;
+	HalfedgeRef tmp_hf = v->halfedge;
+	do {
+		adjust_halfedges.push_back(tmp_hf);
+		adjust_halfedges.push_back(tmp_hf->twin);
+		new_halfedges.push_back(emplace_halfedge());
+		new_halfedges.push_back(emplace_halfedge());
+		new_edges.push_back(emplace_edge());
+		new_vertices.push_back(emplace_vertex());
+		tmp_hf = tmp_hf->twin->next;
+	} while (tmp_hf != v->halfedge);
+
+	size_t num = new_vertices.size();
+
+	for (int i = 0; i < num; i++) {
+		adjust_halfedges[2 * i]->vertex = new_vertices[i];
+		adjust_halfedges[2 * i + 1]->next = new_halfedges[2 * i];
+
+		new_halfedges[2 * i]->face = adjust_halfedges[2 * i + 1]->face;
+		new_halfedges[2 * i]->vertex = new_vertices[i];
+		new_halfedges[2 * i]->edge = new_edges[i];
+		new_halfedges[2 * i]->twin = new_halfedges[2 * i + 1];
+		new_halfedges[2 * i]->next = adjust_halfedges[2 * ((i + 1) % num)];
+
+		new_halfedges[2 * i + 1]->face = new_face;
+		new_halfedges[2 * i + 1]->vertex = new_vertices[(i + 1) % num];
+		new_halfedges[2 * i + 1]->edge = new_edges[i];
+		new_halfedges[2 * i + 1]->twin = new_halfedges[2 * i];
+		new_halfedges[2 * i + 1]->next = new_halfedges[2 * ((i - 1 + num) % num) + 1];
+
+		new_edges[i]->halfedge = new_halfedges[2 * i];
+
+		new_vertices[i]->halfedge = new_halfedges[2 * i];
+		new_vertices[i]->position = v->position;
+		interpolate_data({v}, new_vertices[i]);
+	}
+	new_face->halfedge = new_halfedges[1];
+
+	erase_vertex(v);
+    return new_face;
 }
 
 /*
@@ -1175,7 +1217,24 @@ void Halfedge_Mesh::bevel_positions(FaceRef face, std::vector<Vec3> const &start
 	// The basic strategy here is to loop over the list of outgoing halfedges,
 	// and use the preceding and next vertex position from the original mesh
 	// (in the start_positions array) to compute an new vertex position.
-	
+	int idx = 0;
+	HalfedgeRef tmp_hf = face->halfedge;
+	do {
+		Vec3 A = tmp_hf->twin->next->twin->vertex->position;
+		Vec3 B = tmp_hf->vertex->position;
+		Vec3 BA = B - A;
+		Vec3 unit = (B - A) / (B - A).norm();
+		float dot_product = dot(direction * distance, unit);
+		float along_distance;
+		if (dot_product == 0.0f) {
+			along_distance = 0.0f;
+		} else {
+			along_distance = (direction * distance).norm_squared() / dot_product;
+		}
+
+		tmp_hf->vertex->position = start_positions[idx++] + unit * along_distance;
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf != face->halfedge);
 }
 
 /*
