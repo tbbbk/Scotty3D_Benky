@@ -368,9 +368,61 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
  */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::inset_vertex(FaceRef f) {
 	// A2Lx4 (OPTIONAL): inset vertex
+	if (f->boundary) {
+		return std::nullopt;
+	}
 	
-	(void)f;
-    return std::nullopt;
+	VertexRef new_vertex = emplace_vertex();
+	
+	std::vector<HalfedgeRef> new_halfedges;
+	std::vector<HalfedgeRef> hf_adjust;
+	
+	HalfedgeRef tmp_hf = f->halfedge;
+	do {
+		hf_adjust.push_back(tmp_hf);
+		new_halfedges.push_back(emplace_halfedge());
+		new_halfedges.push_back(emplace_halfedge());
+		tmp_hf = tmp_hf -> next;
+	} while (tmp_hf != f->halfedge);
+	
+	std::vector<VertexCRef> const_vertices;
+	for (int i = 0; i < hf_adjust.size(); i++) {
+		const_vertices.push_back(hf_adjust[i]->vertex);
+		new_vertex->position += hf_adjust[i]->vertex->position / (float) hf_adjust.size();
+	}
+	interpolate_data(const_vertices, new_vertex);
+	new_vertex->halfedge = new_halfedges[1];
+
+	for (int i = 0; i < hf_adjust.size(); i++) {
+		hf_adjust[i]->next = new_halfedges[2 * i];
+		new_halfedges[2 * i]->next = new_halfedges[2 * i + 1];
+		new_halfedges[2 * i + 1]->next = hf_adjust[i];
+
+		new_halfedges[2 * i]->vertex = hf_adjust[i]->twin->vertex;
+		new_halfedges[2 * i + 1]->vertex = new_vertex;
+
+		FaceRef new_face;
+		if (i == 0) {
+			new_face = hf_adjust[i]->face;
+		} else {
+			new_face = emplace_face();
+		}
+		hf_adjust[i]->face = new_face;
+		new_halfedges[2 * i]->face = new_face;
+		new_halfedges[2 * i + 1]->face = new_face;
+		
+		new_halfedges[2 * i]->twin = new_halfedges[2 * ((i + 1) % hf_adjust.size()) + 1];
+		new_halfedges[2 * i + 1]->twin = new_halfedges[2 * ((i - 1 + hf_adjust.size()) % hf_adjust.size())];
+
+		EdgeRef new_edge = emplace_edge();
+		new_halfedges[2 * i]->edge = new_edge;
+		new_halfedges[2 * ((i + 1) % hf_adjust.size()) + 1]->edge = new_edge;
+		new_edge->halfedge = new_halfedges[2 * i];
+
+		new_face->halfedge = hf_adjust[i];
+	}
+
+	return new_vertex;
 }
 
 

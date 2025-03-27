@@ -7,8 +7,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
-                // "--run-tests",
-                // "a2.lx3.collapse_face.edge.boundary",
+                "--run-tests",
+                "a2.lx4.inset_vertex.basic.tri",
                 // "--scene",
                 // "D:\\Desktop\\Computer Graphics\\Scotty3D\\media\\js3d\\A2-dodecahedron.js3d"
             ],
