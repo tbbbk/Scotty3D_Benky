@@ -368,9 +368,61 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::split_edge(EdgeRef e) {
  */
 std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::inset_vertex(FaceRef f) {
 	// A2Lx4 (OPTIONAL): inset vertex
+	if (f->boundary) {
+		return std::nullopt;
+	}
 	
-	(void)f;
-    return std::nullopt;
+	VertexRef new_vertex = emplace_vertex();
+	
+	std::vector<HalfedgeRef> new_halfedges;
+	std::vector<HalfedgeRef> hf_adjust;
+	
+	HalfedgeRef tmp_hf = f->halfedge;
+	do {
+		hf_adjust.push_back(tmp_hf);
+		new_halfedges.push_back(emplace_halfedge());
+		new_halfedges.push_back(emplace_halfedge());
+		tmp_hf = tmp_hf -> next;
+	} while (tmp_hf != f->halfedge);
+	
+	std::vector<VertexCRef> const_vertices;
+	for (int i = 0; i < hf_adjust.size(); i++) {
+		const_vertices.push_back(hf_adjust[i]->vertex);
+		new_vertex->position += hf_adjust[i]->vertex->position / (float) hf_adjust.size();
+	}
+	interpolate_data(const_vertices, new_vertex);
+	new_vertex->halfedge = new_halfedges[1];
+
+	for (int i = 0; i < hf_adjust.size(); i++) {
+		hf_adjust[i]->next = new_halfedges[2 * i];
+		new_halfedges[2 * i]->next = new_halfedges[2 * i + 1];
+		new_halfedges[2 * i + 1]->next = hf_adjust[i];
+
+		new_halfedges[2 * i]->vertex = hf_adjust[i]->twin->vertex;
+		new_halfedges[2 * i + 1]->vertex = new_vertex;
+
+		FaceRef new_face;
+		if (i == 0) {
+			new_face = hf_adjust[i]->face;
+		} else {
+			new_face = emplace_face();
+		}
+		hf_adjust[i]->face = new_face;
+		new_halfedges[2 * i]->face = new_face;
+		new_halfedges[2 * i + 1]->face = new_face;
+		
+		new_halfedges[2 * i]->twin = new_halfedges[2 * ((i + 1) % hf_adjust.size()) + 1];
+		new_halfedges[2 * i + 1]->twin = new_halfedges[2 * ((i - 1 + hf_adjust.size()) % hf_adjust.size())];
+
+		EdgeRef new_edge = emplace_edge();
+		new_halfedges[2 * i]->edge = new_edge;
+		new_halfedges[2 * ((i + 1) % hf_adjust.size()) + 1]->edge = new_edge;
+		new_edge->halfedge = new_halfedges[2 * i];
+
+		new_face->halfedge = hf_adjust[i];
+	}
+
+	return new_vertex;
 }
 
 
@@ -410,8 +462,50 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_vertex(VertexRef v) {
 	// Reminder: This function does not update the vertex positions.
 	// Remember to also fill in bevel_vertex_helper (A2Lx5h)
 
-	(void)v;
-    return std::nullopt;
+	FaceRef new_face = emplace_face();
+	std::vector<VertexRef> new_vertices;
+	std::vector<EdgeRef> new_edges;
+	std::vector<HalfedgeRef> new_halfedges;
+	std::vector<HalfedgeRef> adjust_halfedges;
+	HalfedgeRef tmp_hf = v->halfedge;
+	do {
+		adjust_halfedges.push_back(tmp_hf);
+		adjust_halfedges.push_back(tmp_hf->twin);
+		new_halfedges.push_back(emplace_halfedge());
+		new_halfedges.push_back(emplace_halfedge());
+		new_edges.push_back(emplace_edge());
+		new_vertices.push_back(emplace_vertex());
+		tmp_hf = tmp_hf->twin->next;
+	} while (tmp_hf != v->halfedge);
+
+	size_t num = new_vertices.size();
+
+	for (int i = 0; i < num; i++) {
+		adjust_halfedges[2 * i]->vertex = new_vertices[i];
+		adjust_halfedges[2 * i + 1]->next = new_halfedges[2 * i];
+
+		new_halfedges[2 * i]->face = adjust_halfedges[2 * i + 1]->face;
+		new_halfedges[2 * i]->vertex = new_vertices[i];
+		new_halfedges[2 * i]->edge = new_edges[i];
+		new_halfedges[2 * i]->twin = new_halfedges[2 * i + 1];
+		new_halfedges[2 * i]->next = adjust_halfedges[2 * ((i + 1) % num)];
+
+		new_halfedges[2 * i + 1]->face = new_face;
+		new_halfedges[2 * i + 1]->vertex = new_vertices[(i + 1) % num];
+		new_halfedges[2 * i + 1]->edge = new_edges[i];
+		new_halfedges[2 * i + 1]->twin = new_halfedges[2 * i];
+		new_halfedges[2 * i + 1]->next = new_halfedges[2 * ((i - 1 + num) % num) + 1];
+
+		new_edges[i]->halfedge = new_halfedges[2 * i];
+
+		new_vertices[i]->halfedge = new_halfedges[2 * i];
+		new_vertices[i]->position = v->position;
+		interpolate_data({v}, new_vertices[i]);
+	}
+	new_face->halfedge = new_halfedges[1];
+
+	erase_vertex(v);
+    return new_face;
 }
 
 /*
@@ -427,8 +521,44 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_edge(EdgeRef e) {
 	// Reminder: This function does not update the vertex positions.
 	// remember to also fill in bevel_edge_helper (A2Lx6h)
 
-	(void)e;
-    return std::nullopt;
+	// FaceRef new_face = emplace_face();
+	// HalfedgeRef h = e->halfedge;
+	// HalfedgeRef t = h->twin;
+	// VertexRef h_vertex = h->vertex;
+	// VertexRef t_vertex = e->halfedge->twin->vertex;
+	
+	// // First deal with h_vertex side
+	// std::vector<VertexRef> new_vertices_h_side;
+	// std::vector<EdgeRef> new_edges_h_side;
+	// std::vector<HalfedgeRef> new_halfedges_h_side;
+	// std::vector<HalfedgeRef> adjust_halfedges_h_side;
+	// HalfedgeRef tmp_hf = t->next;
+
+	// do {
+	// 	adjust_halfedges_h_side.push_back(tmp_hf);
+	// 	adjust_halfedges_h_side.push_back(tmp_hf->twin);
+	// 	new_halfedges_h_side.push_back(emplace_halfedge());
+	// 	new_halfedges_h_side.push_back(emplace_halfedge());
+	// 	new_vertices_h_side.push_back(emplace_vertex());
+	// 	new_edges_h_side.push_back(emplace_edge());
+	// 	tmp_hf = tmp_hf->twin->next;
+	// } while (tmp_hf != h);
+	// size_t h_num = new_vertices_h_side.size();
+	// for (int i = 0; i < h_num; i++) {
+	// 	adjust_halfedges_h_side[2 * i]->vertex = new_vertices_h_side[i];
+	// 	adjust_halfedges_h_side[2 * i + 1]->next = new_halfedges_h_side[2 * i];
+
+	// 	new_halfedges_h_side[2 * i]->face = adjust_halfedges_h_side[2 * i + 1]->face;
+	// 	new_halfedges_h_side[2 * i]->vertex = new_vertices_h_side[i];
+	// 	new_halfedges_h_side[2 * i]->edge = new_edges_h_side[i];
+	// 	new_halfedges_h_side[2 * i]->twin = new_halfedges_h_side[2 * i + 1];
+		
+	// 	new_halfedges_h_side[2 * i]->next = adjust_halfedges_h_side[2 * ((i + 1) % num)];
+	// }
+
+
+    // return new_face;
+	return std::nullopt;
 }
 
 /*
@@ -597,8 +727,111 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {
  */
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::make_boundary(FaceRef face) {
 	//A2Lx7: (OPTIONAL) make_boundary
+	/**
+	 * The ugliest shit I have ever written.
+	 * Just too tired to fix it...
+	 */
 
-	return std::nullopt; //TODO: actually write this code!
+	HalfedgeRef h = face->halfedge;
+	HalfedgeRef tmp_hf = h;
+	bool adj_to_boundary = false;
+	do {
+		if (tmp_hf->edge->on_boundary()) {
+			adj_to_boundary = true;
+			break;
+		}
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf != h);
+
+	if (!adj_to_boundary) {
+		face->boundary = true;
+		return face;
+	}
+
+	FaceRef boundary_face;
+	std::set<std::pair<HalfedgeRef, HalfedgeRef>> last_next;
+	std::vector<EdgeRef> edge_erase;
+	std::vector<VertexRef> vertices_erase;
+
+	tmp_hf = h;
+	do {
+		if (tmp_hf->edge->on_boundary()) {
+			edge_erase.push_back(tmp_hf->edge);
+			if (tmp_hf->twin->next->edge->on_boundary()
+			 && tmp_hf->twin->next->twin->face == face) {
+				vertices_erase.push_back(tmp_hf->vertex);
+			}
+			boundary_face = tmp_hf->twin->face;
+			HalfedgeRef next_valid_in = tmp_hf;
+			do {
+				next_valid_in = next_valid_in->next;
+			} while (next_valid_in->edge->on_boundary());
+
+			HalfedgeRef last_valid_in = next_valid_in->twin;
+			do {
+				last_valid_in = last_valid_in->next->twin; 
+			} while (!last_valid_in->edge->on_boundary());
+
+			last_next.insert({last_valid_in, next_valid_in});
+
+			// TODO bugs
+			HalfedgeRef next_valid_out = tmp_hf->twin;
+			do {
+				next_valid_out = next_valid_out->next;
+			} while (next_valid_out->twin->face == face);
+
+			HalfedgeRef last_valid_out = next_valid_out->twin;
+			do {
+				last_valid_out = last_valid_out->next->twin; 
+			} while (last_valid_out->face != face);
+			last_next.insert({last_valid_out, next_valid_out});
+		}
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf != h);
+
+	int boundary_num = (int) last_next.size() >> 1;
+	std::vector<FaceRef> boundary_faces = {boundary_face, face};
+	std::vector<HalfedgeRef> adjust_faces;
+	for (int i = 0; i < boundary_num - 2; i++) {
+		boundary_faces.push_back(emplace_face());
+	}
+	
+	size_t idx = 0;
+	for (const auto& ln : last_next) {
+		ln.first->next = ln.second;
+		if (idx++ < boundary_num) {
+			adjust_faces.push_back(ln.first);
+		}
+	}
+	idx = 0;
+	for (auto ttt : adjust_faces) {
+		tmp_hf = ttt;
+		do {
+			tmp_hf->face = boundary_faces[idx];
+			tmp_hf = tmp_hf->next;
+		} while (tmp_hf != ttt);
+		boundary_faces[idx]->halfedge = ttt;
+		boundary_faces[idx++]->boundary = true;
+	}
+
+	while (idx < boundary_faces.size()) {
+		erase_face(boundary_faces[idx++]);
+	}
+
+	for (auto e : edge_erase) {
+		HalfedgeRef he = e->halfedge;
+		HalfedgeRef te = e->halfedge->twin;
+		erase_edge(e);
+		erase_halfedge(he);
+		erase_halfedge(te);
+	}
+
+	for (auto v : vertices_erase) {
+		erase_vertex(v);
+	}
+
+	face->boundary = true;
+	return face;
 }
 
 /*
@@ -1042,8 +1275,6 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(FaceRef f) 
 		} while (hf_last->next != hf_tmp->twin);
 		if (num == 3) {
 			return std::nullopt;
-		} else {
-			std::cout << num;
 		}
 		hf_last->face->halfedge = hf_last;
 		halfedges_last.push_back(hf_last);
@@ -1091,8 +1322,80 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::weld_edges(EdgeRef e, EdgeR
 	//A2Lx8: Weld Edges
 
 	//Reminder: use interpolate_data() to merge bone_weights data on vertices!
+	
+	if (!e->on_boundary() || !e2->on_boundary()) return std::nullopt;
 
-    return std::nullopt;
+	HalfedgeRef e_h = e->halfedge->face->boundary ? e->halfedge : e->halfedge->twin;
+	HalfedgeRef e2_h = e2->halfedge->face->boundary ? e2->halfedge : e2->halfedge->twin;
+
+	HalfedgeRef tmp_hf = e_h;
+	do {
+		if (tmp_hf == e2_h) return std::nullopt;
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf != e_h);
+	// if (tmp_hf == e2_h) return std::nullopt;
+	// tmp_hf->next = e2_h->next;
+
+	FaceRef f_final = e2_h->face;
+	FaceRef erase_f = e_h->face;
+	
+	interpolate_data({e_h, e2_h->twin}, e_h);
+	interpolate_data({e_h->twin, e2_h}, e_h->twin);
+	interpolate_data({e_h->vertex, e2_h->twin->vertex}, e_h->vertex);
+	interpolate_data({e_h->twin->vertex, e2_h->vertex}, e_h->twin->vertex);
+	
+	e_h->vertex->position = (e_h->vertex->position + e2_h->twin->vertex->position) / 2.0f;
+	e_h->twin->vertex->position = (e_h->twin->vertex->position + e2_h->vertex->position) / 2.0f;
+	erase_vertex(e2_h->vertex);
+	erase_vertex(e2_h->twin->vertex);
+
+	tmp_hf = e2_h;
+	do {
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf->next != e2_h);
+	HalfedgeRef e2_last = tmp_hf;
+
+	tmp_hf = e2_h->twin;
+	do {
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf->next != e2_h->twin);
+	HalfedgeRef e2_twin_last = tmp_hf;
+
+	tmp_hf = e_h;
+	do {
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf->next != e_h);
+	HalfedgeRef e_last = tmp_hf;
+
+	// tmp_hf = e_h->twin;
+	// do {
+	// 	tmp_hf = tmp_hf->next;
+	// } while (tmp_hf->next != e_h->twin);
+	// HalfedgeRef e_twin_last = tmp_hf;
+	
+	e2_last->next = e_h->next;
+	e2_twin_last->next = e_h;
+	e_last->next = e2_h->next;
+	e2_h->next->vertex = e_h->vertex;
+	e2_h->twin->next->vertex = e_h->twin->vertex;
+	e_h->face = e2_h->twin->face;
+	e_h->face->halfedge = e_h->next;
+	e_h->next = e2_h->twin->next;
+	e2_h->twin->face->halfedge = e_h;
+
+	erase_edge(e2_h->edge);
+	erase_halfedge(e2_h->twin);
+	erase_halfedge(e2_h);
+	erase_face(erase_f);
+
+	f_final->halfedge = e_last;
+	tmp_hf = e_last;
+	do {
+		tmp_hf->face = f_final;
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf != e_last);
+
+    return e;
 }
 
 
@@ -1123,7 +1426,24 @@ void Halfedge_Mesh::bevel_positions(FaceRef face, std::vector<Vec3> const &start
 	// The basic strategy here is to loop over the list of outgoing halfedges,
 	// and use the preceding and next vertex position from the original mesh
 	// (in the start_positions array) to compute an new vertex position.
-	
+	int idx = 0;
+	HalfedgeRef tmp_hf = face->halfedge;
+	do {
+		Vec3 A = tmp_hf->twin->next->twin->vertex->position;
+		Vec3 B = tmp_hf->vertex->position;
+		Vec3 BA = B - A;
+		Vec3 unit = (B - A) / (B - A).norm();
+		float dot_product = dot(direction * distance, unit);
+		float along_distance;
+		if (dot_product == 0.0f) {
+			along_distance = 0.0f;
+		} else {
+			along_distance = (direction * distance).norm_squared() / dot_product;
+		}
+
+		tmp_hf->vertex->position = start_positions[idx++] + unit * along_distance;
+		tmp_hf = tmp_hf->next;
+	} while (tmp_hf != face->halfedge);
 }
 
 /*

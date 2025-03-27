@@ -1,5 +1,6 @@
 #include "test.h"
 #include "geometry/halfedge.h"
+#include <iostream>
 
 static void expect_make_boundary(Halfedge_Mesh &mesh, Halfedge_Mesh::FaceRef face, Halfedge_Mesh const &after) {
 	if (auto ret = mesh.make_boundary(face)) {
@@ -65,6 +66,8 @@ Test test_a2_lx7_make_boundary_basic_inner("a2.lx7.make_boundary.basic.inner", [
 		{2, 6, 3}
 	});
 
+	// std::cout<<after.describe();
+
 	expect_make_boundary(mesh, face, after);
 });
 
@@ -96,10 +99,10 @@ Test test_a2_lx7_make_boundary_basic_tri("a2.lx7.make_boundary.basic.tri", []() 
 		{0, 3, 4, 1}, 
 		{1, 4, 2}
 	});
-
+	
 	Halfedge_Mesh::FaceRef face = mesh.faces.begin();
     std::advance(face, 1);
-
+	
 	Halfedge_Mesh after = Halfedge_Mesh::from_indexed_faces({
 		Vec3(-1.0f, 1.1f, 0.0f), Vec3(1.05f, 1.0f, 0.0f),
 		Vec3(-1.3f,-0.7f, 0.0f), Vec3(1.25f, -1.0f, 0.0f)
