@@ -826,6 +826,7 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {
 std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::make_boundary(FaceRef face) {
 	//A2Lx7: (OPTIONAL) make_boundary
 	/**
+	 * TODO bugs: sometimes it works, sometines not
 	 * The ugliest shit I have ever written.
 	 * Just too tired to fix it...
 	 */
@@ -872,7 +873,6 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::make_boundary(FaceRef face)
 
 			last_next.insert({last_valid_in, next_valid_in});
 
-			// TODO bugs
 			HalfedgeRef next_valid_out = tmp_hf->twin;
 			do {
 				next_valid_out = next_valid_out->next;
@@ -929,6 +929,7 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::make_boundary(FaceRef face)
 	}
 
 	face->boundary = true;
+
 	return face;
 }
 
@@ -1349,6 +1350,8 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(FaceRef f) 
 	//Reminder: use interpolate_data() to merge corner_uv / corner_normal data on halfedges
 	// (also works for bone_weights data on vertices!)
 
+	// Some BUGS: we need to accept imperfect :)
+
 	if (f->boundary) return std::nullopt;
 
 	VertexRef new_vertex = emplace_vertex();
@@ -1365,13 +1368,13 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(FaceRef f) 
 		if (hf_tmp->twin->face->boundary) {
 			return std::nullopt;
 		}
-		int num = 1;
+		int num = 0;
 		HalfedgeRef hf_last = hf_tmp->twin;
 		do {
 			hf_last = hf_last->next;
 			num += 1;
 		} while (hf_last->next != hf_tmp->twin);
-		if (num == 3) {
+		if (num == 2) {
 			return std::nullopt;
 		}
 		hf_last->face->halfedge = hf_last;
@@ -1524,6 +1527,9 @@ void Halfedge_Mesh::bevel_positions(FaceRef face, std::vector<Vec3> const &start
 	// The basic strategy here is to loop over the list of outgoing halfedges,
 	// and use the preceding and next vertex position from the original mesh
 	// (in the start_positions array) to compute an new vertex position.
+	if (!std::isfinite(direction.x) || !std::isfinite(direction.y) || !std::isfinite(direction.z)) {
+		return;
+	}
 	int idx = 0;
 	HalfedgeRef tmp_hf = face->halfedge;
 	do {
