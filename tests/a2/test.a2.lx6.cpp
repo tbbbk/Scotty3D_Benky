@@ -102,7 +102,7 @@ Bevel Edge on Edge: 1-2
 After mesh:
   5-3
  / \|
-1   6
+1   4
 |\ /
 0-2
 */
@@ -111,20 +111,20 @@ Test test_a2_lx6_bevel_edge_basic_tri_tri("a2.lx6.bevel_edge.basic.tri_tri", [](
         Vec3{-0.5f, 0.0f, -0.5f},   Vec3{-0.5f, 0.0f, 0.5f},
         Vec3{0.5f, 0.0f, -0.5f},    Vec3{0.5f, 0.0f, 0.5f}
 	}, {
-        {2, 0, 1}, 
-        {3, 2, 1}
+        {0, 2, 1}, 
+        {3, 1, 2}
 	});
 
-	Halfedge_Mesh::EdgeRef edge = mesh.halfedges.begin()->next->next->edge;
+	Halfedge_Mesh::EdgeRef edge = mesh.halfedges.begin()->next->next->next->next->edge;
 
 	Halfedge_Mesh after = Halfedge_Mesh::from_indexed_faces({
         Vec3{-0.5f, 0.0f, -0.5f}, Vec3{-0.5f, 0.0f, 0.25f}, 
         Vec3{0.25f, 0.0f, -0.5f}, Vec3{0.5f, 0.0f, 0.5f}, 
         Vec3{0.5f, 0.0f, -0.25f}, Vec3{-0.25f ,0.0f, 0.5f}
 	}, {
-        {2, 0, 1},
-        {4, 5, 3},
-        {2, 1, 5, 4}
+        {0, 2, 1},
+        {4, 3, 5},
+        {1, 2, 4, 5}
 	});
 
 	expect_bevel_edge(mesh, edge, Vec3(0.0f, 1.0f, 0.0f), 0.25, after);

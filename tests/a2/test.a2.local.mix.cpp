@@ -83,6 +83,7 @@ Test test_a2_local_mix("a2.local.mix", []() {
 		case 8: {
 			auto v = vertex();
 			if(auto ret = mesh.bevel_vertex(v)) {
+				// This is not reasonable ret.value()->normal()
                 mesh.bevel_positions(ret.value(), positions(ret.value()), ret.value()->normal(), 0.5f);
             }
 		} break;
