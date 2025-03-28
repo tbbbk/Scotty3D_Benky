@@ -521,44 +521,142 @@ std::optional<Halfedge_Mesh::FaceRef> Halfedge_Mesh::bevel_edge(EdgeRef e) {
 	// Reminder: This function does not update the vertex positions.
 	// remember to also fill in bevel_edge_helper (A2Lx6h)
 
-	// FaceRef new_face = emplace_face();
-	// HalfedgeRef h = e->halfedge;
-	// HalfedgeRef t = h->twin;
-	// VertexRef h_vertex = h->vertex;
-	// VertexRef t_vertex = e->halfedge->twin->vertex;
+	if (e->on_boundary()) {
+		return std::nullopt;
+	}
 	
-	// // First deal with h_vertex side
-	// std::vector<VertexRef> new_vertices_h_side;
-	// std::vector<EdgeRef> new_edges_h_side;
-	// std::vector<HalfedgeRef> new_halfedges_h_side;
-	// std::vector<HalfedgeRef> adjust_halfedges_h_side;
-	// HalfedgeRef tmp_hf = t->next;
+	FaceRef new_face = emplace_face();
+	HalfedgeRef tmp_hf;
 
-	// do {
-	// 	adjust_halfedges_h_side.push_back(tmp_hf);
-	// 	adjust_halfedges_h_side.push_back(tmp_hf->twin);
-	// 	new_halfedges_h_side.push_back(emplace_halfedge());
-	// 	new_halfedges_h_side.push_back(emplace_halfedge());
-	// 	new_vertices_h_side.push_back(emplace_vertex());
-	// 	new_edges_h_side.push_back(emplace_edge());
-	// 	tmp_hf = tmp_hf->twin->next;
-	// } while (tmp_hf != h);
-	// size_t h_num = new_vertices_h_side.size();
-	// for (int i = 0; i < h_num; i++) {
-	// 	adjust_halfedges_h_side[2 * i]->vertex = new_vertices_h_side[i];
-	// 	adjust_halfedges_h_side[2 * i + 1]->next = new_halfedges_h_side[2 * i];
-
-	// 	new_halfedges_h_side[2 * i]->face = adjust_halfedges_h_side[2 * i + 1]->face;
-	// 	new_halfedges_h_side[2 * i]->vertex = new_vertices_h_side[i];
-	// 	new_halfedges_h_side[2 * i]->edge = new_edges_h_side[i];
-	// 	new_halfedges_h_side[2 * i]->twin = new_halfedges_h_side[2 * i + 1];
-		
-	// 	new_halfedges_h_side[2 * i]->next = adjust_halfedges_h_side[2 * ((i + 1) % num)];
-	// }
+	HalfedgeRef h = e->halfedge;
+	HalfedgeRef t = h->twin;
+	HalfedgeRef h_twin = emplace_halfedge();
+	HalfedgeRef t_twin = emplace_halfedge();
+	h->twin = h_twin; h_twin->twin = h; 
+	t->twin = t_twin; t_twin->twin = t;
+	EdgeRef h_edge = emplace_edge();
+	EdgeRef t_edge = emplace_edge();
+	h_edge->halfedge = h; t_edge->halfedge = t;
+	h->edge = h_edge; h_twin->edge = h_edge;
+	t->edge = t_edge; t_twin->edge = t_edge;
+	Vec3 t_position = h->vertex->position;
+	Vec3 h_position = t->vertex->position;
+	erase_vertex(h->vertex);
+	erase_vertex(t->vertex);
+	erase_edge(e);
 
 
-    // return new_face;
-	return std::nullopt;
+	// First: deal with the `t` side
+	std::vector<HalfedgeRef> t_adjust_halfedges;
+	std::vector<HalfedgeRef> t_new_halfedges;
+	std::vector<VertexRef> t_new_vertices;
+	std::vector<EdgeRef> t_new_edges;
+
+	tmp_hf = t->next;
+	do {
+		t_adjust_halfedges.push_back(tmp_hf);
+		t_adjust_halfedges.push_back(tmp_hf->twin);
+		VertexRef v = emplace_vertex();
+		v->position = t_position;
+		interpolate_data({tmp_hf->vertex, tmp_hf->vertex}, v);
+		t_new_vertices.push_back(v);
+		if (tmp_hf->twin->next != h) {
+			t_new_edges.push_back(emplace_edge());
+			t_new_halfedges.push_back(emplace_halfedge());
+			t_new_halfedges.push_back(emplace_halfedge());
+		}
+		tmp_hf = tmp_hf->twin->next;
+	} while (tmp_hf != h);
+
+	int t_num = (int) t_new_vertices.size();
+
+	for (int i = 0; i < t_num; i++) {
+		t_adjust_halfedges[2 * i]->vertex = t_new_vertices[i];
+		t_new_vertices[i]->halfedge = t_adjust_halfedges[2 * i];
+		if (i != t_num - 1) {
+			t_adjust_halfedges[2 * i + 1]->next = t_new_halfedges[2 * i];
+			t_new_halfedges[2 * i]->twin = t_new_halfedges[2 * i + 1];
+			t_new_halfedges[2 * i + 1]->twin = t_new_halfedges[2 * i];
+			t_new_halfedges[2 * i]->vertex = t_new_vertices[i];
+			t_new_halfedges[2 * i + 1]->vertex = t_new_vertices[i + 1];
+			t_new_halfedges[2 * i]->face = t_adjust_halfedges[2 * i + 1]->face;
+			t_new_halfedges[2 * i + 1]->face = new_face;
+			t_new_halfedges[2 * i]->next = t_adjust_halfedges[2 * (i + 1)];
+			if (i == 0) {
+				t_new_halfedges[2 * i + 1]->next = t_twin;
+			} else {
+				t_new_halfedges[2 * i + 1]->next = t_new_halfedges[2 * (i - 1) + 1];
+			}
+			t_new_halfedges[2 * i]->edge = t_new_edges[i];
+			t_new_halfedges[2 * i + 1]->edge = t_new_edges[i];
+			t_new_edges[i]->halfedge = t_new_halfedges[2 * i];
+		} else {
+			t_adjust_halfedges[2 * i + 1]->next = h;
+		}
+	}
+
+	
+	// Second: deal with the `h` side
+	std::vector<HalfedgeRef> h_adjust_halfedges;
+	std::vector<HalfedgeRef> h_new_halfedges;
+	std::vector<VertexRef> h_new_vertices;
+	std::vector<EdgeRef> h_new_edges;
+
+	tmp_hf = h->next;
+	do {
+		h_adjust_halfedges.push_back(tmp_hf);
+		h_adjust_halfedges.push_back(tmp_hf->twin);
+		VertexRef v = emplace_vertex();
+		v->position = h_position;
+		interpolate_data({tmp_hf->vertex, tmp_hf->vertex}, v);
+		h_new_vertices.push_back(v);
+		if (tmp_hf->twin->next != t) {
+			h_new_edges.push_back(emplace_edge());
+			h_new_halfedges.push_back(emplace_halfedge());
+			h_new_halfedges.push_back(emplace_halfedge());
+		}
+		tmp_hf = tmp_hf->twin->next;
+	} while (tmp_hf != t);
+
+	int h_num = (int) h_new_vertices.size();
+
+	for (int i = 0; i < h_num; i++) {
+		h_adjust_halfedges[2 * i]->vertex = h_new_vertices[i];
+		h_new_vertices[i]->halfedge = h_adjust_halfedges[2 * i];
+		if (i != h_num - 1) {
+			h_adjust_halfedges[2 * i + 1]->next = h_new_halfedges[2 * i];
+			h_new_halfedges[2 * i]->twin = h_new_halfedges[2 * i + 1];
+			h_new_halfedges[2 * i + 1]->twin = h_new_halfedges[2 * i];
+			h_new_halfedges[2 * i]->vertex = h_new_vertices[i];
+			h_new_halfedges[2 * i + 1]->vertex = h_new_vertices[i + 1];
+			h_new_halfedges[2 * i]->face = h_adjust_halfedges[2 * i + 1]->face;
+			h_new_halfedges[2 * i + 1]->face = new_face;
+			h_new_halfedges[2 * i]->next = h_adjust_halfedges[2 * (i + 1)];
+			if (i == 0) {
+				h_new_halfedges[2 * i + 1]->next = h_twin;
+			} else {
+				h_new_halfedges[2 * i + 1]->next = h_new_halfedges[2 * (i - 1) + 1];
+			}
+			h_new_halfedges[2 * i]->edge = h_new_edges[i];
+			h_new_halfedges[2 * i + 1]->edge = h_new_edges[i];
+			h_new_edges[i]->halfedge = h_new_halfedges[2 * i];
+		} else {
+			h_adjust_halfedges[2 * i + 1]->next =  t;
+		}
+	}
+
+	// Third: deal with the new face
+	new_face->halfedge = h_twin;
+	h->vertex = t_new_vertices.back();
+	h_twin->vertex = h_new_vertices[0];
+	t->vertex = h_new_vertices.back();
+	t_twin->vertex = t_new_vertices[0];
+	h_twin->next = t_new_halfedges.back();
+	t_twin->next = h_new_halfedges.back();
+	h_twin->face = new_face;
+	t_twin->face = new_face;
+
+	return new_face;
 }
 
 /*
@@ -1436,7 +1534,7 @@ void Halfedge_Mesh::bevel_positions(FaceRef face, std::vector<Vec3> const &start
 		float dot_product = dot(direction * distance, unit);
 		float along_distance;
 		if (dot_product == 0.0f) {
-			along_distance = 0.0f;
+			along_distance = -distance;
 		} else {
 			along_distance = (direction * distance).norm_squared() / dot_product;
 		}
