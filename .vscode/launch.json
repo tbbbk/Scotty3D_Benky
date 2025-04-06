@@ -8,9 +8,9 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a2.local.mix",
+                "a2.g1.triangulate.basic.square",
                 // "--scene",
-                // "D:\\Desktop\\Computer Graphics\\Scotty3D\\media\\js3d\\A2-dodecahedron.js3d"
+                // "D:\\Desktop\\A2-dodecahedron.js3d"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
