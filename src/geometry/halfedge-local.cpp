@@ -1374,6 +1374,9 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_face(FaceRef f) 
 			hf_last = hf_last->next;
 			num += 1;
 		} while (hf_last->next != hf_tmp->twin);
+
+		// Cannot collapse the face when the relative face is a triangle
+		// Otherwise the triangle will also be collapsed
 		if (num == 2) {
 			return std::nullopt;
 		}

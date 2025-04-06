@@ -13,7 +13,61 @@
  */
 void Halfedge_Mesh::triangulate() {
 	//A2G1: triangulation
-	
+	for (auto f : faces) {
+		if (f.boundary) continue;
+
+		std::vector<VertexRef> vs;
+		std::vector<HalfedgeRef> hfs;
+		HalfedgeRef h = f.halfedge;
+		do {
+			vs.push_back(h->vertex);
+			hfs.push_back(h);
+			h = h->next;
+		} while (h != f.halfedge);
+
+		assert(vs.size() >= 3);
+		if (vs.size() == 3) continue;
+
+		int new_cnt = (int) vs.size() - 3;
+
+		HalfedgeRef last = emplace_halfedge();
+		last->next = hfs[0];
+		hfs[1]->next = last;
+		last->face = hfs[0]->face;
+		last->vertex = vs[2];
+
+		for (int i = 0; i < new_cnt; i++) {
+			HalfedgeRef new_hf = emplace_halfedge();
+			EdgeRef new_edge = emplace_edge();
+			FaceRef new_face = emplace_face();
+
+			new_edge->halfedge = new_hf;
+
+			new_hf->vertex = vs[0];
+			new_hf->twin = last;
+			new_hf->edge = new_edge;
+			new_hf->next = hfs[i + 2];
+			new_hf->face = new_face;
+			
+			last->twin = new_hf;
+			last->edge = new_edge;
+
+			// reset the last
+			if (i == new_cnt - 1) {
+				last = hfs.back();
+			} else {
+				last = emplace_halfedge();
+			}
+			last->next = new_hf;
+			last->vertex = vs[i + 3];
+			last->face = new_face;
+
+			hfs[i + 2]->next = last;
+			hfs[i + 2]->face = new_face;
+
+			new_face->halfedge = hfs[i + 2];
+		}
+	}
 }
 
 /*

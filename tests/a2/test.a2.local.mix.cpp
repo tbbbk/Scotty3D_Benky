@@ -70,6 +70,7 @@ Test test_a2_local_mix("a2.local.mix", []() {
 		} break;
 		case 5: {
 			auto f = face();
+			// This is also unreasonable, when it rejects the operation, it still validate() the mesh...
 			mesh.collapse_face(f);
 		} break;
 		case 6: {
