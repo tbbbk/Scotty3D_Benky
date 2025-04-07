@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a2.g1.triangulate.basic.square",
+                "a2.g3.catmull_clark.basic.quad_cube",
                 // "--scene",
                 // "D:\\Desktop\\A2-dodecahedron.js3d"
             ],

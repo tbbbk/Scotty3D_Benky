@@ -141,10 +141,66 @@ void Halfedge_Mesh::catmark_subdivide() {
 	// https://en.wikipedia.org/wiki/Catmull%E2%80%93Clark_subdivision_surface
 
 	// Faces
+	for (FaceRef f = faces.begin(); f != faces.end(); ++f) {
+		if (f->boundary) {
+			continue;
+		}
+		Vec3 f_position = Vec3(0.0f);
+		int v_num = 0;
+		HalfedgeRef h = f->halfedge;
+		do {
+			f_position += h->vertex->position;
+			v_num++;
+			h = h->next;
+		} while (h != f->halfedge);
+		face_vertex_positions[f] = f_position / (float) v_num;
+	}
 
 	// Edges
+	for (EdgeRef e = edges.begin(); e != edges.end(); ++e) {
+		if (e->on_boundary()) {
+			edge_vertex_positions[e] = (e->halfedge->vertex->position + e->halfedge->twin->vertex->position) / 2.0f;
+		} else {
+			edge_vertex_positions[e] = (e->halfedge->vertex->position 
+				+ e->halfedge->twin->vertex->position 
+				+ face_vertex_positions[e->halfedge->face] 
+				+ face_vertex_positions[e->halfedge->twin->face]) / 4.0f;
+		}
+
+	}
 
 	// Vertices
+	for (VertexRef v = vertices.begin(); v != vertices.end(); ++v) {
+		if (v->on_boundary()) {
+			Vec3 v_position = Vec3(0.0f);
+			HalfedgeRef h = v->halfedge;
+			do {
+				if (h->edge->on_boundary()) {
+					v_position += h->twin->vertex->position / 8.0f;
+				}
+				h = h->twin->next;
+			} while (h != v->halfedge);
+			v_position += v->position * 0.75f;
+			vertex_positions[v] = v_position;
+		} else {
+			Vec3 v_position = Vec3(0.0f);
+			Vec3 f_position = Vec3(0.0f);
+			Vec3 e_position = Vec3(0.0f);
+			int valence = 0;
+			HalfedgeRef h = v->halfedge;
+			do {
+				valence++;
+				f_position += face_vertex_positions[h->face];
+				e_position += (h->vertex->position + h->twin->vertex->position) / 2.0f;
+				h = h->twin->next;
+			} while (h != v->halfedge);
+			Vec3 Q = f_position / (float) valence;
+			Vec3 R = e_position / (float) valence;
+			Vec3 S = v->position;
+			v_position = Q / (float) valence + 2.0f * R / (float) valence + S * (float) (valence - 3) / (float) valence;
+			vertex_positions[v] = v_position;
+		}
+	}
 
 	
 	//Now, use the provided helper function to actually perform the subdivision:
