@@ -244,16 +244,62 @@ bool Halfedge_Mesh::loop_subdivide() {
 	// subdivided (fine) mesh, which has more elements to traverse.  We
 	// will then assign vertex positions in the new mesh based on the
 	// values we computed for the original mesh.
+
     
 	// Compute new positions for all the vertices in the input mesh using
 	// the Loop subdivision rule and store them in vertex_new_pos.
 	[[maybe_unused]]
 	std::unordered_map< VertexRef, Vec3 > vertex_new_pos;
+	for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+		if (v->on_boundary()) {
+			Vec3 v_position = Vec3(0.0f);
+			HalfedgeRef h = v->halfedge;
+			do {
+				if (h->edge->on_boundary()) {
+					v_position += h->twin->vertex->position / 8.0f;
+				}
+				h = h->twin->next;
+			} while (h != v->halfedge);
+			v_position += v->position * 0.75f;
+			vertex_new_pos[v] = v_position;
+			continue;
+		}
+		int degree = 0;
+		Vec3 neighbor_position = Vec3(0.0f);
+		HalfedgeRef h = v->halfedge;
+		do {
+			neighbor_position += h->twin->vertex->position;
+			degree++;
+			h = h->twin->next;
+		} while (h != v->halfedge);
+
+		float u = (degree == 3) ? (3.0f / 16.0f) : 3.0f / (float) (8 * degree);
+		vertex_new_pos[v] = (1.0f - degree * u) * v->position + u * neighbor_position;
+	}
+
+	// To check if a vertex is new, you can use a simple helper that
+	// checks if has an entry in vertex_new_pos:
+	[[maybe_unused]]
+	auto is_new = [&vertex_new_pos](VertexRef v) -> bool {
+		return !vertex_new_pos.count(v);
+	};
 	    
 	// Next, compute the subdivided vertex positions associated with edges, and
 	// store them in edge_new_pos:
 	[[maybe_unused]]
 	std::unordered_map< EdgeRef, Vec3 > edge_new_pos;
+	for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+		if (e->on_boundary()) {
+			edge_new_pos[e] = (e->halfedge->vertex->position + e->halfedge->twin->vertex->position) / 2.0f;
+			continue;
+		}
+		Vec3 A = e->halfedge->vertex->position;
+		Vec3 B = e->halfedge->twin->vertex->position;
+		Vec3 C = e->halfedge->next->next->vertex->position;
+		Vec3 D = e->halfedge->twin->next->next->vertex->position;
+		Vec3 new_position = (3.0f / 8.0f) * (A + B) + (1.0f / 8.0f) * (C + D);
+		edge_new_pos[e] = new_position;
+	}
     
 	// Next, we're going to split every edge in the mesh, in any order, placing
 	// the split vertex at the recorded edge_new_pos.
@@ -262,25 +308,47 @@ bool Halfedge_Mesh::loop_subdivide() {
 	// edges added by splitting. So store references to the new edges:
 	[[maybe_unused]]
 	std::vector< EdgeRef > new_edges;
+	for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+		if (is_new(e->halfedge->vertex) || is_new(e->halfedge->twin->vertex)) {
+			continue;
+		} 
+		VertexRef v1 = e->halfedge->vertex;
+		VertexRef v2 = e->halfedge->twin->vertex;
+		VertexRef v = split_edge(e).value();
+		VertexRef v_mid = is_new(e->halfedge->vertex) ? e->halfedge->vertex : e->halfedge->twin->vertex;
+		v_mid->position = edge_new_pos[e];
+		HalfedgeRef h = v->halfedge;
+		do {
+			if (h->twin->vertex != v1 && h->twin->vertex != v2) {
+				new_edges.push_back(h->edge);
+			}
+			h = h->twin->next;
+		} while (h != v->halfedge);
+	}
 
 	// Also note that in this loop, we only want to iterate over edges of the
 	// original mesh. Otherwise, we'll end up splitting edges that we just split
 	// (and the loop will never end!)
 
 	// Now flip any new edge that connects a new and old vertex.
-	// To check if a vertex is new, you can use a simple helper that
-	// checks if has an entry in vertex_new_pos:
-	[[maybe_unused]]
-	auto is_new = [&vertex_new_pos](VertexRef v) -> bool {
-		return !vertex_new_pos.count(v);
-	};
-
-    // Now flip any new edge that connects an old and new vertex.
+	for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+		auto it = std::find(new_edges.begin(), new_edges.end(), e);
+		if (it == new_edges.end()) {
+			continue;
+		}
+		VertexRef v1 = e->halfedge->vertex;
+		VertexRef v2 = e->halfedge->twin->vertex;
+		if (is_new(v1) ^ is_new(v2)) {
+			flip_edge(e);
+		}
+	}
     
     // Finally, copy new vertex positions into the Vertex::position.
-
-
-
+	for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+		if (!is_new(v)) {
+			v->position = vertex_new_pos[v];
+		}
+	}
 
 	return true;
 }
