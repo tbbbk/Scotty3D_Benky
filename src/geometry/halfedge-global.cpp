@@ -86,17 +86,32 @@ void Halfedge_Mesh::linear_subdivide() {
 
 	// For every vertex, assign its current position to vertex_positions[v]:
 
-	//(TODO)
+	for (VertexRef v = vertices.begin(); v != vertices.end(); ++v) {
+		vertex_positions[v] = v->position;
+	}
 
     // For every edge, assign the midpoint of its adjacent vertices to edge_vertex_positions[e]:
 	// (you may wish to investigate the helper functions of Halfedge_Mesh::Edge)
 
-	//(TODO)
+	for (EdgeRef e = edges.begin(); e != edges.end(); ++e) {
+		edge_vertex_positions[e] = (e->halfedge->vertex->position + e->halfedge->twin->vertex->position) / 2.0f;
+	}
 
     // For every *non-boundary* face, assign the centroid (i.e., arithmetic mean) to face_vertex_positions[f]:
 	// (you may wish to investigate the helper functions of Halfedge_Mesh::Face)
 
-	//(TODO)
+	for (FaceRef f = faces.begin(); f != faces.end(); ++f) {
+		if (f->boundary) continue;
+		Vec3 f_position = Vec3(0.0f);
+		int v_num = 0;
+		HalfedgeRef h = f->halfedge;
+		do {
+			f_position += h->vertex->position;
+			v_num++;
+			h = h->next;
+		} while (h != f->halfedge);
+		face_vertex_positions[f] = f_position / (float) v_num;
+	}
 
 
 	//use the helper function to actually perform the subdivision:
