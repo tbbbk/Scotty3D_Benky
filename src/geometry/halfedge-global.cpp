@@ -362,22 +362,74 @@ void Halfedge_Mesh::isotropic_remesh(Isotropic_Remesh_Parameters const &params) 
 
 	// Compute the mean edge length. This will be the "target length".
 
-    // Repeat the four main steps for `outer_iterations` iterations:
+	auto compute_length = [](const EdgeRef& e) {
+		Vec3 v1 = e->halfedge->vertex->position;
+		Vec3 v2 = e->halfedge->twin->vertex->position;
+		return (v1 - v2).norm();
+	};
+	
+	// Repeat the four main steps for `outer_iterations` iterations:
+	for (uint32_t i = 0; i < params.outer_iterations; i++) {
+		float target_length = 0.0f;
+		for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+			target_length += compute_length(e) / (float) edges.size();
+		}
 
-    // -> Split edges much longer than the target length.
-	//     ("much longer" means > target length * params.longer_factor)
+		for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+			float l = compute_length(e);
+			if (l > target_length * params.longer_factor) {
+				// -> Split edges much longer than the target length.
+				//     ("much longer" means > target length * params.longer_factor)
+				split_edge(e);
+			} else if (l < target_length * params.shorter_factor) {
+				// -> Collapse edges much shorter than the target length.
+				//     ("much shorter" means < target length * params.shorter_factor)
+				collapse_edge(e);
+			}
+		}
+	
+		// -> Flip each edge if it improves vertex degree.
+		auto compute_degree = [](const  VertexRef& v) {
+			int degree = 0;
+			HalfedgeRef h = v->halfedge;
+			do {
+				degree++;
+				h = h->twin->next;
+			} while (h != v->halfedge);
+			return degree;
+		};
 
-    // -> Collapse edges much shorter than the target length.
-	//     ("much shorter" means < target length * params.shorter_factor)
+		for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+			int degree_a = compute_degree(e->halfedge->vertex);
+			int degree_b = compute_degree(e->halfedge->twin->vertex);
+			int degree_c = compute_degree(e->halfedge->next->vertex);
+			int degree_d = compute_degree(e->halfedge->twin->next->vertex);
 
-    // -> Flip each edge if it improves vertex degree.
+			int deviation_before = abs(degree_a - 6) + abs(degree_b - 6) + abs(degree_c - 6) + abs(degree_d - 6);
+			int deviation_after = abs((degree_a - 1) - 6) + abs((degree_b - 1) - 6) + abs((degree_c + 1) - 6) + abs((degree_d + 1) - 6);
+			if (deviation_before > deviation_after) {
+				flip_edge(e);
+			}
+		}
 
-    // -> Finally, apply some tangential smoothing to the vertex positions.
-	//     This means move every vertex in the plane of its normal,
-	//     toward the centroid of its neighbors, by params.smoothing_step of
-	//     the total distance (so, smoothing_step of 1 would move all the way,
-	//     smoothing_step of 0 would not move).
-	// -> Repeat the tangential smoothing part params.smoothing_iterations times.
+		// -> Finally, apply some tangential smoothing to the vertex positions.
+		//     This means move every vertex in the plane of its normal,
+		//     toward the centroid of its neighbors, by params.smoothing_step of
+		//     the total distance (so, smoothing_step of 1 would move all the way,
+		//     smoothing_step of 0 would not move).
+		// -> Repeat the tangential smoothing part params.smoothing_iterations times.
+		for (uint32_t j = 0; j < params.smoothing_iterations; j++) {
+			std::unordered_map< VertexRef, Vec3 > vertex_new_pos;
+			for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+				vertex_new_pos[v] = (*v).neighborhood_center();
+			}
+			for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+				Vec3 move_direction = vertex_new_pos[v] - v->position;
+				move_direction = move_direction - dot(v->normal(), move_direction) * v->normal();
+				v->position += params.smoothing_step * move_direction;
+			}
+		}
+	}
 
 	//NOTE: many of the steps in this function will be modifying the element
 	//      lists they are looping over. Take care to avoid use-after-free

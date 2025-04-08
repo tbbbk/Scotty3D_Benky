@@ -774,6 +774,28 @@ std::optional<Halfedge_Mesh::EdgeRef> Halfedge_Mesh::flip_edge(EdgeRef e) {
 		return std::nullopt;
 	}
 
+	{
+		int degree = 0;
+		HalfedgeRef v_h = e->halfedge->vertex->halfedge;
+		do {
+			degree++;
+			v_h = v_h->twin->next;
+		} while (v_h != e->halfedge->vertex->halfedge);
+		if (degree == 2) {
+			return std::nullopt;
+		}
+		degree = 0;
+		v_h = e->halfedge->twin->vertex->halfedge;
+		do {
+			degree++;
+			v_h = v_h->twin->next;
+		} while (v_h != e->halfedge->twin->vertex->halfedge);
+		if (degree == 2) {
+			return std::nullopt;
+		}
+	}
+
+	
 	HalfedgeRef& h = e->halfedge;
 	HalfedgeRef& t = h->twin;
 	
