@@ -353,6 +353,7 @@ bool Halfedge_Mesh::loop_subdivide() {
 	return true;
 }
 
+// READ: Somehow, when I test it via GUI, it will collapse...
 //isotropic_remesh: improves mesh quality through local operations.
 // Do note that this requires a working implementation of EdgeSplit, EdgeFlip, and EdgeCollapse
 void Halfedge_Mesh::isotropic_remesh(Isotropic_Remesh_Parameters const &params) {
@@ -362,22 +363,79 @@ void Halfedge_Mesh::isotropic_remesh(Isotropic_Remesh_Parameters const &params) 
 
 	// Compute the mean edge length. This will be the "target length".
 
-    // Repeat the four main steps for `outer_iterations` iterations:
+	auto compute_length = [](const EdgeRef& e) {
+		Vec3 v1 = e->halfedge->vertex->position;
+		Vec3 v2 = e->halfedge->twin->vertex->position;
+		return (v1 - v2).norm();
+	};
+	
+	// Repeat the four main steps for `outer_iterations` iterations:
+	for (uint32_t i = 0; i < params.outer_iterations; i++) {
+		float target_length = 0.0f;
+		for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+			target_length += compute_length(e) / (float) edges.size();
+		}
 
-    // -> Split edges much longer than the target length.
-	//     ("much longer" means > target length * params.longer_factor)
+		for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+			float l = compute_length(e);
+			if (l > target_length * params.longer_factor) {
+				// -> Split edges much longer than the target length.
+				//     ("much longer" means > target length * params.longer_factor)
+				split_edge(e);
+			}
+		}
 
-    // -> Collapse edges much shorter than the target length.
-	//     ("much shorter" means < target length * params.shorter_factor)
+		for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+			float l = compute_length(e);
+			if (l < target_length * params.shorter_factor) {
+				// -> Collapse edges much shorter than the target length.
+				//     ("much shorter" means < target length * params.shorter_factor)
+				collapse_edge(e);
+			}
+		}
+	
+		// -> Flip each edge if it improves vertex degree.
+		auto compute_degree = [](const  VertexRef& v) {
+			int degree = 0;
+			HalfedgeRef h = v->halfedge;
+			do {
+				degree++;
+				h = h->twin->next;
+			} while (h != v->halfedge);
+			return degree;
+		};
 
-    // -> Flip each edge if it improves vertex degree.
+		for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+			int degree_a = compute_degree(e->halfedge->vertex);
+			int degree_b = compute_degree(e->halfedge->twin->vertex);
+			int degree_c = compute_degree(e->halfedge->next->vertex);
+			int degree_d = compute_degree(e->halfedge->twin->next->vertex);
 
-    // -> Finally, apply some tangential smoothing to the vertex positions.
-	//     This means move every vertex in the plane of its normal,
-	//     toward the centroid of its neighbors, by params.smoothing_step of
-	//     the total distance (so, smoothing_step of 1 would move all the way,
-	//     smoothing_step of 0 would not move).
-	// -> Repeat the tangential smoothing part params.smoothing_iterations times.
+			int deviation_before = abs(degree_a - 6) + abs(degree_b - 6) + abs(degree_c - 6) + abs(degree_d - 6);
+			int deviation_after = abs((degree_a - 1) - 6) + abs((degree_b - 1) - 6) + abs((degree_c + 1) - 6) + abs((degree_d + 1) - 6);
+			if (deviation_before > deviation_after) {
+				flip_edge(e);
+			}
+		}
+
+		// -> Finally, apply some tangential smoothing to the vertex positions.
+		//     This means move every vertex in the plane of its normal,
+		//     toward the centroid of its neighbors, by params.smoothing_step of
+		//     the total distance (so, smoothing_step of 1 would move all the way,
+		//     smoothing_step of 0 would not move).
+		// -> Repeat the tangential smoothing part params.smoothing_iterations times.
+		for (uint32_t j = 0; j < params.smoothing_iterations; j++) {
+			std::unordered_map< VertexRef, Vec3 > vertex_new_pos;
+			for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+				vertex_new_pos[v] = (*v).neighborhood_center();
+			}
+			for (VertexRef v = vertices.begin(); v != vertices.end(); v++) {
+				Vec3 move_direction = vertex_new_pos[v] - v->position;
+				move_direction = move_direction - dot(v->normal(), move_direction) * v->normal();
+				v->position += params.smoothing_step * move_direction;
+			}
+		}
+	}
 
 	//NOTE: many of the steps in this function will be modifying the element
 	//      lists they are looping over. Take care to avoid use-after-free
@@ -389,14 +447,25 @@ struct Edge_Record {
 	Edge_Record() {
 	}
 	Edge_Record(std::unordered_map<uint32_t, Mat4>& VQ, Halfedge_Mesh::EdgeRef e) : edge(e) {
-		
 		// Compute the combined quadric from the edge endpoints.
         // -> Build the 3x3 linear system whose solution minimizes the quadric error
         //    associated with these two endpoints.
+		Halfedge_Mesh::VertexRef v1 = e->halfedge->vertex;
+		Halfedge_Mesh::VertexRef v2 = e->halfedge->twin->vertex;
+		Mat4 K = VQ[v1->id] + VQ[v2->id];
+		Mat4 A = K;
+		Vec3 b = -Vec3(A[3][0], A[3][1], A[3][2]);
+		A[3] = Vec4(0.0f, 0.0f, 0.0f, 1.0f);
+		A[0][3] = 0.0f;
+		A[1][3] = 0.0f;
+		A[2][3] = 0.0f;
         // -> Use this system to solve for the optimal position, and store it in
         //    Edge_Record::optimal.
+		optimal = A.inverse() * b;
         // -> Also store the cost associated with collapsing this edge in
         //    Edge_Record::cost.
+		Vec4 xyz1 = Vec4(optimal, 1.0f);
+		score = dot((Mat4::transpose(K) * xyz1), xyz1); 
 	}
 	Halfedge_Mesh::EdgeRef edge;
 	Vec3 optimal;
@@ -460,19 +529,102 @@ bool Halfedge_Mesh::simplify(float ratio) {
 	// Compute initial quadrics for each face by writing the plane equation for
     // the face in homogeneous coordinates. These quadrics should be stored in
     // face_quadrics
+	for (auto f : faces) {
+		Vec3 p = f.halfedge->vertex->position;
+		Vec3 N = f.normal();
+		float d = -dot(N, p);
+		Vec4 v = Vec4(N.x, N.y, N.z, d);
+		Mat4 K = outer(v, v);
+		face_quadrics[f.id] = K;
+	}
+
     // -> Compute an initial quadric for each vertex as the sum of the quadrics
     //    associated with the incident faces, storing it in vertex_quadrics
+	for (auto v : vertices) {
+		HalfedgeRef h = v.halfedge;
+		Mat4 K = Mat4::Zero;
+		do {
+			K += face_quadrics[h->face->id];
+			h = h->twin->next;
+		} while (h != v.halfedge);
+		vertex_quadrics[v.id] = K;
+	}
     // -> Build a priority queue of edges according to their quadric error cost,
     //    i.e., by building an Edge_Record for each edge and sticking it in the
     //    queue. You may want to use the above MutablePriorityQueue<Edge_Record> for this.
+	for (EdgeRef e = edges.begin(); e != edges.end(); e++) {
+		Edge_Record record(vertex_quadrics, e);
+		edge_records[e->id] = record;
+		queue.insert(record);
+	}
     // -> Until reaching the target edge budget, collapse the best edge. Remember
     //    to remove from the queue any edge that touches the collapsing edge
     //    BEFORE it gets collapsed, and add back into the queue any edge touching
     //    the collapsed vertex AFTER it's been collapsed. Also remember to assign
     //    a quadric to the collapsed vertex, and to pop the collapsed edge off the
     //    top of the queue.
+	float target_tri_nums = faces.size() * ratio;
+	while (faces.size() > target_tri_nums) {
+		// 1. Get the cheapest edge from the queue
+		Edge_Record cheapest_egde_record = queue.top();
+		// 2. Remove the cheapest edge from the queue
+		queue.pop();
+		edge_records.erase(cheapest_egde_record.edge->id);
+		// 3. Compute the new quadric by summing the quadrics at its two endpoints
+		VertexRef v1 = cheapest_egde_record.edge->halfedge->vertex;
+		VertexRef v2 = cheapest_egde_record.edge->halfedge->twin->vertex;
+		Mat4 new_quadric_for_vertice = vertex_quadrics[v1->id] + vertex_quadrics[v2->id];
+		// 4. Remvoe any edges touching either of its endpoints from the queue
+		std::vector<EdgeRef> changed_edges;
+		auto get_touching_edges = [&changed_edges, &cheapest_egde_record](const VertexRef& v) {
+			HalfedgeRef h = v->halfedge;
+			do {
+				if (h->edge != cheapest_egde_record.edge) {
+					changed_edges.push_back(h->edge);
+				}
+				h = h->twin->next;
+			} while (h != v->halfedge);
+		};
+		get_touching_edges(v1);
+		get_touching_edges(v2);
+		for (auto e : changed_edges) {
+			queue.remove(edge_records[e->id]);
+		}
+		vertex_quadrics.erase(v1->id);
+		vertex_quadrics.erase(v2->id);
+		face_quadrics.erase(cheapest_egde_record.edge->halfedge->face->id);
+		face_quadrics.erase(cheapest_egde_record.edge->halfedge->twin->face->id);
+		// 5. Collapse the edge
+		VertexRef new_v = collapse_edge(cheapest_egde_record.edge).value();
+		// update the vertex_quadrics
+		HalfedgeRef tmp_hf = new_v->halfedge;
+		do {
+			{
+				VertexRef v = tmp_hf->twin->vertex;
+				HalfedgeRef h = v->halfedge;
+				Mat4 K = Mat4::Zero;
+				do {
+					K += face_quadrics[h->face->id];
+					h = h->twin->next;
+				} while (h != v->halfedge);
+				vertex_quadrics[v->id] = K;
+			}
+			tmp_hf = tmp_hf->twin->next;
+		} while (tmp_hf != new_v->halfedge);
+		// 6. Set the quadric of the new vertex to the quadric computed in Step 3
+		vertex_quadrics[new_v->id] = new_quadric_for_vertice;
+		new_v->position = cheapest_egde_record.optimal;
+		// 7. Insert an edge touching the new vertex into the queue, creating new edge records for each of them
+		HalfedgeRef h = new_v->halfedge;
+		do {
+			Edge_Record new_record(vertex_quadrics, h->edge);
+			queue.insert(new_record);
+			edge_records[h->edge->id] = new_record;
+			h = h->twin->next;
+		} while (h != new_v->halfedge);
+	}
 
-    return false;
+    return true;
 }
 
 /*
