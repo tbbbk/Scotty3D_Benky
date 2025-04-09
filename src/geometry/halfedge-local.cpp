@@ -1230,8 +1230,6 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 	// 
 	VertexRef v_h = h->vertex;
 	VertexRef v_t = t->vertex;
-	v_h->halfedge = h;
-	v_t->halfedge = t;
 	auto get_vertex_edge_number = [](VertexRef v) { 
 		// only for vertex whose halfedge is not halfedges.end()
 		int answer = 0;
@@ -1239,29 +1237,13 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 		do {
 			answer++;
 			temp = temp->twin->next;
-		} while (temp->twin->next != v->halfedge);
+		} while (temp != v->halfedge);
 		return answer;
 	};
 	
-	// TODO
-	// h's start point
-	tmp_hf = v_h->halfedge;
-	do {
-		if (tmp_hf != h && tmp_hf->next->twin->vertex == v_t && get_vertex_edge_number(tmp_hf->next->vertex) == 2) {
-			return std::nullopt;
-		}
-		tmp_hf = tmp_hf->twin->next;
-	} while (tmp_hf != v_h->halfedge);
-		
-	// t's start point
-	tmp_hf = v_t->halfedge;
-	do {
-		if (tmp_hf != t && tmp_hf->next->twin->vertex == v_h && get_vertex_edge_number(tmp_hf->next->vertex) == 2) {
-			return std::nullopt;
-		}
-		tmp_hf = tmp_hf->twin->next;
-	} while (tmp_hf != v_t->halfedge);
-
+	if (get_vertex_edge_number(v_h) <= 2 || get_vertex_edge_number(v_t) <= 2) {
+		return std::nullopt;
+	}
 
 	/**
 	 * Second: Create new vertex
@@ -1283,7 +1265,7 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 	// h's start point
 	tmp_hf = v_h->halfedge;
 	do{
-		if (tmp_hf != h && tmp_hf->twin != t) {
+		if (tmp_hf != h) {
 			from_to_vh.push_back({tmp_hf, tmp_hf->twin});
 		}	
 		tmp_hf = tmp_hf->twin->next;
@@ -1292,7 +1274,7 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 	// t's start point
 	tmp_hf = v_t->halfedge;
 	do{
-		if (tmp_hf != t && tmp_hf->twin != h) {
+		if (tmp_hf != t) {
 			from_to_vt.push_back({tmp_hf, tmp_hf->twin});
 		}
 		tmp_hf = tmp_hf->twin->next;
@@ -1331,17 +1313,25 @@ std::optional<Halfedge_Mesh::VertexRef> Halfedge_Mesh::collapse_edge(EdgeRef e) 
 	wait_to_erase_edge.push_back(e);
 	wait_to_erase_vertex.push_back(v_h);
 	wait_to_erase_vertex.push_back(v_t);
-	h->face->halfedge = h->face->halfedge->next;
-	t->face->halfedge = t->face->halfedge->next;
+	h->face->halfedge = h->next;
+	t->face->halfedge = t->next;
 	wait_to_erase_halfedge.push_back(h);
 	wait_to_erase_halfedge.push_back(t);
+
+	/**
+	 * Fifth: delete the triangle
+	 */
 	tmp_hf = v->halfedge;
 	do {
 		if (tmp_hf->next->next == tmp_hf) {
+			// set the twin
 			tmp_hf->twin->twin = tmp_hf->next->twin;
 			tmp_hf->next->twin->twin = tmp_hf->twin;
+			// Set the edge
 			tmp_hf->next->twin->edge = tmp_hf->twin->edge;
+			// Set the edge's new haledge
 			tmp_hf->twin->edge->halfedge = tmp_hf->twin;
+			// set the vertex's new halfedge
 			tmp_hf->next->vertex->halfedge = tmp_hf->twin;
 			wait_to_erase_halfedge.push_back(tmp_hf);
 			wait_to_erase_halfedge.push_back(tmp_hf->next);
