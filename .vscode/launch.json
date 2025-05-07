@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a2.global.mix",
+                "a3.task1.sample_ray.simple",
                 // "--scene",
                 // "D:\\Desktop\\A2-dodecahedron.js3d"
             ],
