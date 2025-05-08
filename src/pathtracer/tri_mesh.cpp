@@ -16,6 +16,32 @@ BBox Triangle::bbox() const {
     // account for that here, or later on in BBox::hit.
 
     BBox box;
+	Tri_Mesh_Vert v_0 = vertex_list[v0];
+    Tri_Mesh_Vert v_1 = vertex_list[v1];
+    Tri_Mesh_Vert v_2 = vertex_list[v2];
+	float x_min = std::min(std::min(v_0.position.x, v_1.position.x), v_2.position.x);
+	float y_min = std::min(std::min(v_0.position.y, v_1.position.y), v_2.position.y);
+	float z_min = std::min(std::min(v_0.position.z, v_1.position.z), v_2.position.z);
+	float x_max = std::max(std::max(v_0.position.x, v_1.position.x), v_2.position.x);
+	float y_max = std::max(std::max(v_0.position.y, v_1.position.y), v_2.position.y);
+	float z_max = std::max(std::max(v_0.position.z, v_1.position.z), v_2.position.z);
+
+	const float EPS = 1e-4f;
+    if (x_max - x_min < EPS) {
+        x_min -= EPS * 0.5f;
+        x_max += EPS * 0.5f;
+    }
+    if (y_max - y_min < EPS) {
+        y_min -= EPS * 0.5f;
+        y_max += EPS * 0.5f;
+    }
+    if (z_max - z_min < EPS) {
+        z_min -= EPS * 0.5f;
+        z_max += EPS * 0.5f;
+    }
+	
+	box.min = Vec3(x_min, y_min, z_min);
+	box.max = Vec3(x_max, y_max, z_max);
     return box;
 }
 

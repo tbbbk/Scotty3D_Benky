@@ -42,12 +42,12 @@ check_for_nest();
 //set compile flags (these can also be overridden per-task using the "options" parameter):
 if (maek.OS === "windows") {
 	maek.options.CPPFlags.push(
-		// "/O2", //optimize
+		"/O2", //optimize
 		/**
 		 * Unmark the below code for debugging
 		 */
-		"/Od",
-        "/wd4702",      
+		// "/Od",
+        // "/wd4702",      
 		//include paths for pre-built libraries:
 		`/I${NEST_LIBS}/SDL2/include`,
 		//include directories:

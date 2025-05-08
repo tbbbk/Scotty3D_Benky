@@ -22,6 +22,19 @@ struct SAHBucketData {
 };
 
 template<typename Primitive>
+void sortPrimitivesByCentroid(
+    std::vector<Primitive> &prims,
+    int axis  // 0 = x, 1 = y, 2 = z
+) {
+    std::sort(prims.begin(), prims.end(),
+        [axis](auto const &a, auto const &b) {
+            // 假设 Primitive 有成员 bbox，且 bbox.center() 返回 Vec3f
+            return a.bbox.center()[axis] < b.bbox.center()[axis];
+        }
+    );
+}
+
+template<typename Primitive>
 void BVH<Primitive>::build(std::vector<Primitive>&& prims, size_t max_leaf_size) {
 	//A3T3 - build a bvh
 
@@ -33,6 +46,45 @@ void BVH<Primitive>::build(std::vector<Primitive>&& prims, size_t max_leaf_size)
     // size configuration.
 
 	//TODO
+
+	float best_cost = FLT_MAX;
+
+	BBox primBounds = prims.begin().bbox();
+	Vec3 c_min(FLT_MAX);
+	Vec3 c_max(FLT_MIN);
+	for (auto prim : prims) {
+		primBounds.enclose(prim.bbox());
+		c_min.x = std::min(prim.bbox().center().x, c_min.x);
+		c_min.y = std::min(prim.bbox().center().y, c_min.y);
+		c_min.z = std::min(prim.bbox().center().z, c_min.z);
+		c_max.x = std::max(prim.bbox().center().x, c_max.x);
+		c_max.y = std::max(prim.bbox().center().y, c_max.y);
+		c_max.z = std::max(prim.bbox().center().z, c_max.z);
+	}
+
+	float best_cost = FLT_MAX;
+	int buckets_num = 12;
+
+	// Three axis
+	for (int i = 0; i < 3; i++) {
+		if (c_min[i] == c_max[i]) {
+			continue;
+		}
+		std::vector<Node> buckets;
+		for (int b; b < buckets_num; b++) {
+			buckets.push_back();
+		}
+
+
+
+
+
+
+		for (auto prim: prims) {
+			float min_t = prim.bbox.center()[i];
+			float centroid
+		}
+	}
 
 }
 
