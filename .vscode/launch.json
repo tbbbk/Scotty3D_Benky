@@ -8,9 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a3.task1.sample_ray.simple",
-                // "--scene",
-                // "D:\\Desktop\\A2-dodecahedron.js3d"
+                "a3.task3.bvh.hit.simple.sphere"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

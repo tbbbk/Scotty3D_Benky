@@ -118,7 +118,8 @@ struct BBox {
 		if (t_min > times.x && t_min < times.y) {
 			times.x = t_min;
 			return true;
-		} else if (t_max < times.y && t_max > times.x) {
+		} 
+		if (t_max < times.y && t_max > times.x) {
 			times.y = t_max;
 			return true;
 		}
