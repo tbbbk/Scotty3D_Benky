@@ -15,7 +15,7 @@ public:
 	class Node {
 	public:
 		BBox bbox;
-		size_t start, size, l, r;
+		size_t start = 0, size = 0, l = 0, r = 0;
 
 		// A node is a leaf if l == r, since all interior nodes must have distinct children
 		bool is_leaf() const;

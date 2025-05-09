@@ -86,6 +86,44 @@ struct BBox {
 		// [times.x,times.y], update times with the new intersection times.
 		// This means at least one of tmin and tmax must be within the range
 
+		float invDx = (fabs(ray.dir.x) < 1e-8f) ? FLT_MAX : 1.0f / ray.dir.x;
+		float invDy = (fabs(ray.dir.y) < 1e-8f) ? FLT_MAX : 1.0f / ray.dir.y;
+		float invDz = (fabs(ray.dir.z) < 1e-8f) ? FLT_MAX : 1.0f / ray.dir.z;
+
+		float t_0x = (min.x - ray.point.x) * invDx;
+		float t_1x = (max.x - ray.point.x) * invDx;
+		if (t_0x > t_1x) std::swap(t_0x, t_1x);
+		
+		float t_0y = (min.y - ray.point.y) * invDy;
+		float t_1y = (max.y - ray.point.y) * invDy;
+		if (t_0y > t_1y) std::swap(t_0y, t_1y);
+
+		float t_0z = (min.z - ray.point.z) * invDz;
+		float t_1z = (max.z - ray.point.z) * invDz;
+		if (t_0z > t_1z) std::swap(t_0z, t_1z);
+
+		float t_min = t_0x;
+		float t_max = t_1x;
+
+		if (t_0x > t_1y || t_1x < t_0y) return false;
+
+		if (t_0y > t_min) t_min = t_0y;
+		if (t_1y < t_max) t_max = t_1y;
+
+		if (t_min > t_1z || t_max < t_0z) return false;
+
+		if (t_0z > t_min) t_min = t_0z;
+		if (t_1z < t_max) t_max = t_1z;
+
+		if (t_min > times.x && t_min < times.y) {
+			times.x = t_min;
+			return true;
+		} 
+		if (t_max < times.y && t_max > times.x) {
+			times.y = t_max;
+			return true;
+		}
+
 		return false;
 	}
 

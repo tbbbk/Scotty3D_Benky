@@ -16,6 +16,32 @@ BBox Triangle::bbox() const {
     // account for that here, or later on in BBox::hit.
 
     BBox box;
+	Tri_Mesh_Vert v_0 = vertex_list[v0];
+    Tri_Mesh_Vert v_1 = vertex_list[v1];
+    Tri_Mesh_Vert v_2 = vertex_list[v2];
+	float x_min = std::min(std::min(v_0.position.x, v_1.position.x), v_2.position.x);
+	float y_min = std::min(std::min(v_0.position.y, v_1.position.y), v_2.position.y);
+	float z_min = std::min(std::min(v_0.position.z, v_1.position.z), v_2.position.z);
+	float x_max = std::max(std::max(v_0.position.x, v_1.position.x), v_2.position.x);
+	float y_max = std::max(std::max(v_0.position.y, v_1.position.y), v_2.position.y);
+	float z_max = std::max(std::max(v_0.position.z, v_1.position.z), v_2.position.z);
+
+	const float EPS = 1e-4f;
+    if (x_max - x_min < EPS) {
+        x_min -= EPS * 0.5f;
+        x_max += EPS * 0.5f;
+    }
+    if (y_max - y_min < EPS) {
+        y_min -= EPS * 0.5f;
+        y_max += EPS * 0.5f;
+    }
+    if (z_max - z_min < EPS) {
+        z_min -= EPS * 0.5f;
+        z_max += EPS * 0.5f;
+    }
+	
+	box.min = Vec3(x_min, y_min, z_min);
+	box.max = Vec3(x_max, y_max, z_max);
     return box;
 }
 
@@ -26,22 +52,51 @@ Trace Triangle::hit(const Ray& ray) const {
     Tri_Mesh_Vert v_0 = vertex_list[v0];
     Tri_Mesh_Vert v_1 = vertex_list[v1];
     Tri_Mesh_Vert v_2 = vertex_list[v2];
-    (void)v_0;
-    (void)v_1;
-    (void)v_2;
 
     // TODO (PathTracer): Task 2
     // Intersect the ray with the triangle defined by the three vertices.
 
     Trace ret;
     ret.origin = ray.point;
-    ret.hit = false;       // was there an intersection?
-    ret.distance = 0.0f;   // at what distance did the intersection occur?
-    ret.position = Vec3{}; // where was the intersection?
-    ret.normal = Vec3{};   // what was the surface normal at the intersection?
-                           // (this should be interpolated between the three vertex normals)
-	ret.uv = Vec2{};	   // What was the uv associated with the point of intersection?
-						   // (this should be interpolated between the three vertex uvs)
+	
+	// Moller-Trumbore 
+	Vec3 s = ray.point - v_0.position;
+	Vec3 e1 = v_1.position - v_0.position;
+	Vec3 e2 = v_2.position - v_0.position;
+	Vec3 d = ray.dir.unit();
+
+	float denom = dot(cross(e1, d), e2);
+	if (fabs(denom) < 1e-8f) {
+		ret.hit = false;
+		return ret;
+	}
+
+	float inv_denom = 1.0f / denom;
+	
+	float u = -dot(cross(s, e2), d) * inv_denom;
+	float v = dot(cross(e1, d), s) * inv_denom;
+	float t = -dot(cross(s, e2), e1) * inv_denom;
+	
+	// was there an intersection?
+	if (t >= ray.dist_bounds.x && 
+		t <= ray.dist_bounds.y && 
+		0.0f <= u && 
+		u <= 1.0f && 
+		0.0f <= v && 
+		v <= 1.0f &&
+		0.0f <= u + v &&
+		u + v <= 1.0f) {
+
+		ret.hit = true;
+		ret.distance = t;
+		ret.position = ray.at(t);
+		ret.normal = ((1.0f - u - v) * v_0.normal + u * v_1.normal + v * v_2.normal).unit();
+		ret.uv = (1.0f - u - v) * v_0.uv + u * v_1.uv + v * v_2.uv;
+		
+	} else {
+		ret.hit = false;
+		return ret;
+	}
     return ret;
 }
 
