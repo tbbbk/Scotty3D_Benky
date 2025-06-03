@@ -8,8 +8,8 @@
 
 namespace PT {
 
-constexpr bool SAMPLE_AREA_LIGHTS = true;
-constexpr bool RENDER_NORMALS = true;
+constexpr bool SAMPLE_AREA_LIGHTS = false;
+constexpr bool RENDER_NORMALS = false;
 constexpr bool LOG_CAMERA_RAYS = false;
 constexpr bool LOG_AREA_LIGHT_RAYS = false;
 static thread_local RNG log_rng(0x15462662); //separate RNG for logging a fraction of rays to avoid changing result when logging enabled
@@ -27,15 +27,24 @@ Spectrum Pathtracer::sample_direct_lighting_task4(RNG &rng, const Shading_Info& 
     Spectrum radiance = sum_delta_lights(hit);
 
 	//TODO: ask hit.bsdf to sample an in direction that would scatter out along hit.out_dir
+	Materials::Scatter in_light = hit.bsdf.scatter(rng, hit.out_dir, hit.uv);
 
 	//TODO: rotate that direction into world coordinates
+	Vec3 wi_local = in_light.direction;
+	Vec3 wi_world = hit.object_to_world.rotate(wi_local).unit();
+	in_light.direction = wi_world;
 
 	//TODO: construct a ray travelling in that direction
 	// NOTE: because we want emitted light only, can use depth = 0 for the ray
+	Ray new_ray(hit.pos, in_light.direction);
+	new_ray.depth = 0;
+	new_ray.dist_bounds.x += EPS_F;
 
 	//TODO: trace() the ray to get the emitted light (first part of the return value)
+	auto[emissive_next, light_next] = trace(rng, new_ray);
 
 	//TODO: weight properly depending on the probability of the sampled scattering direction and add to radiance
+	radiance += (hit.bsdf.evaluate(hit.out_dir, wi_local, hit.uv) * emissive_next) / hit.bsdf.pdf(hit.out_dir, wi_local);
 
 	return radiance;
 }
@@ -65,17 +74,26 @@ Spectrum Pathtracer::sample_indirect_lighting(RNG &rng, const Shading_Info& hit)
 	//NOTE: this function and sample_direct_lighting_task4() perform very similar tasks.
 
 	//TODO: ask hit.bsdf to sample an in direction that would scatter out along hit.out_dir
-
+	Materials::Scatter in_light = hit.bsdf.scatter(rng, hit.out_dir, hit.uv);
+	
 	//TODO: rotate that direction into world coordinates
+	Vec3 wi_local = in_light.direction;
+	Vec3 wi_world = hit.object_to_world.rotate(wi_local).unit();
+	in_light.direction = wi_world;
 
 	//TODO: construct a ray travelling in that direction
 	// NOTE: be sure to reduce the ray depth! otherwise infinite recursion is possible
+	Ray new_ray(hit.pos, in_light.direction);
+	new_ray.depth = hit.depth - 1;
+	new_ray.dist_bounds.x += EPS_F;
 
 	//TODO: trace() the ray to get the reflected light (the second part of the return value)
+	auto[emissive_next, light_next] = trace(rng, new_ray);
 
 	//TODO: weight properly depending on the probability of the sampled scattering direction and set radiance
-
 	Spectrum radiance;
+	radiance += (hit.bsdf.evaluate(hit.out_dir, wi_local, hit.uv) * (light_next)) / hit.bsdf.pdf(hit.out_dir, wi_local);
+
     return radiance;
 }
 
