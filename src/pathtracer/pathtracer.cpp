@@ -44,7 +44,11 @@ Spectrum Pathtracer::sample_direct_lighting_task4(RNG &rng, const Shading_Info& 
 	auto[emissive_next, light_next] = trace(rng, new_ray);
 
 	//TODO: weight properly depending on the probability of the sampled scattering direction and add to radiance
-	radiance += (hit.bsdf.evaluate(hit.out_dir, wi_local, hit.uv) * emissive_next) / hit.bsdf.pdf(hit.out_dir, wi_local);
+	if (hit.bsdf.is_specular()) {
+		radiance += light_next * in_light.attenuation;
+	} else {
+		radiance += (hit.bsdf.evaluate(hit.out_dir, wi_local, hit.uv) * emissive_next) / hit.bsdf.pdf(hit.out_dir, wi_local);
+	}
 
 	return radiance;
 }
@@ -92,7 +96,11 @@ Spectrum Pathtracer::sample_indirect_lighting(RNG &rng, const Shading_Info& hit)
 
 	//TODO: weight properly depending on the probability of the sampled scattering direction and set radiance
 	Spectrum radiance;
-	radiance += (hit.bsdf.evaluate(hit.out_dir, wi_local, hit.uv) * (light_next)) / hit.bsdf.pdf(hit.out_dir, wi_local);
+	if (hit.bsdf.is_specular()) {
+		radiance += light_next * in_light.attenuation;
+	} else {
+		radiance += (hit.bsdf.evaluate(hit.out_dir, wi_local, hit.uv) * (light_next)) / hit.bsdf.pdf(hit.out_dir, wi_local);
+	}
 
     return radiance;
 }
