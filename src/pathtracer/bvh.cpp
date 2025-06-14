@@ -182,7 +182,6 @@ template<typename Primitive> Trace BVH<Primitive>::hit(const Ray& ray) const {
 	stack.push(root_idx);
     Trace ret;
 	if (primitives.size() == 0) {
-		ret.hit = false;
 		return ret;
 	}
 	while (!stack.empty()) {

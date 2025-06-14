@@ -38,7 +38,7 @@ Spectrum Pathtracer::sample_direct_lighting_task4(RNG &rng, const Shading_Info& 
 	// NOTE: because we want emitted light only, can use depth = 0 for the ray
 	Ray new_ray(hit.pos, in_light.direction);
 	new_ray.depth = 0;
-	new_ray.dist_bounds.x += EPS_F;
+	new_ray.dist_bounds.x = EPS_F;
 
 	//TODO: trace() the ray to get the emitted light (first part of the return value)
 	auto[emissive_next, light_next] = trace(rng, new_ray);
@@ -76,14 +76,14 @@ Spectrum Pathtracer::sample_direct_lighting_task6(RNG &rng, const Shading_Info& 
 
 		Ray new_ray(hit.pos, in_light.direction);
 		new_ray.depth = 0;
-		new_ray.dist_bounds.x += EPS_F;
+		new_ray.dist_bounds.x = EPS_F;
 
 		auto[emissive_next, light_next] = trace(rng, new_ray);
 		radiance += in_light.attenuation * emissive_next;
 	} else {
-		Vec3   wi_world;
-		Vec3   wi_local;
-		float  pdf_bsdf, pdf_light;
+		Vec3 wi_world;
+		Vec3 wi_local;
+		float pdf_bsdf, pdf_light;
 		Spectrum f, L_in;
 		bool use_bsdf = rng.coin_flip(0.5f);
 		if (use_bsdf) {
@@ -103,7 +103,7 @@ Spectrum Pathtracer::sample_direct_lighting_task6(RNG &rng, const Shading_Info& 
 
 		Ray shadow_ray(hit.pos, wi_world);
 		shadow_ray.depth = 0;
-		shadow_ray.dist_bounds.x += EPS_F;
+		shadow_ray.dist_bounds.x = EPS_F;
 		auto[emissive_next, light_next] = trace(rng, shadow_ray);
 		float pdf_mix = 0.5f * (pdf_bsdf + pdf_light);
 		radiance += (f * emissive_next) / pdf_mix;
@@ -131,7 +131,7 @@ Spectrum Pathtracer::sample_indirect_lighting(RNG &rng, const Shading_Info& hit)
 	// NOTE: be sure to reduce the ray depth! otherwise infinite recursion is possible
 	Ray new_ray(hit.pos, in_light.direction);
 	new_ray.depth = hit.depth - 1;
-	new_ray.dist_bounds.x += EPS_F;
+	new_ray.dist_bounds.x = EPS_F;
 
 	//TODO: trace() the ray to get the reflected light (the second part of the return value)
 	auto[emissive_next, light_next] = trace(rng, new_ray);
@@ -139,9 +139,9 @@ Spectrum Pathtracer::sample_indirect_lighting(RNG &rng, const Shading_Info& hit)
 	//TODO: weight properly depending on the probability of the sampled scattering direction and set radiance
 	Spectrum radiance;
 	if (hit.bsdf.is_specular()) {
-		radiance = light_next * in_light.attenuation;
+		radiance += light_next * in_light.attenuation;
 	} else {
-		radiance = (in_light.attenuation * light_next) / hit.bsdf.pdf(hit.out_dir, wi_local);
+		radiance += (in_light.attenuation * light_next) / hit.bsdf.pdf(hit.out_dir, wi_local);
 	}
 
     return radiance;

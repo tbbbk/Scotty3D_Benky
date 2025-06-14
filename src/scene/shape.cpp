@@ -34,7 +34,7 @@ PT::Trace Sphere::hit(Ray ray) const {
     ret.origin = ray.point;
 
 	Vec3 o = ray.point;
-	Vec3 d = ray.dir.unit();
+	Vec3 d = ray.dir;
 
 	float a = d.norm_squared();
 	float b = 2.0f * dot(o, d);
