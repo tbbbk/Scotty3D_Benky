@@ -3,8 +3,8 @@
 	"transforms":{
 		"Camera_transform":{
 			"parent":null,
-			"translation":[1.4271005392074585,1.4518213272094727,1.7156000137329102],
-			"rotation":[-0.13951557874679565,0.35596099495887756,0.05383671075105667,0.9224580526351929],
+			"translation":[-1.103973627090454,1.5090590715408325,2.346057415008545],
+			"rotation":[-0.2542610168457031,-0.21063430607318878,-0.05684099346399307,0.9422067999839783],
 			"scale":[1,1,1]
 		},
 		"Cow_transform":{
@@ -15,9 +15,15 @@
 		},
 		"Light_transform":{
 			"parent":null,
-			"translation":[0,2.5,0],
+			"translation":[0,4.358763694763184,0],
 			"rotation":[0,0,0,1],
 			"scale":[1.5,1.5,1.5]
+		},
+		"Transform":{
+			"parent":null,
+			"translation":[0,0,0],
+			"rotation":[0,0,0,1],
+			"scale":[1,1,1]
 		}
 	},
 	"cameras":{
@@ -30,7 +36,7 @@
 			"focal_dist":1,
 			"film.width":1280,
 			"film.height":720,
-			"film.samples":32,
+			"film.samples":16,
 			"film.max_ray_depth":8,
 			"film.sample_pattern":"Center"
 		}
@@ -43,6 +49,11 @@
 	"shapes":{},
 	"particles":{},
 	"textures":{
+		"Texture":{
+			"type":"Image",
+			"sampler":"nearest",
+			"image":"C:/Users/tbk/Pictures/wp7623087-splatoon-3-wallpapers.png"
+		},
 		"white":{
 			"type":"Constant",
 			"color":[1,1,1],
@@ -55,12 +66,20 @@
 			"emissive":"white"
 		},
 		"lam_white":{
-			"type":"Lambertian",
-			"albedo":"white"
+			"type":"Glass",
+			"transmittance":"white",
+			"reflectance":"white",
+			"ior":1.5
 		}
 	},
 	"delta_lights":{},
-	"env_lights":{},
+	"env_lights":{
+		"Env Light":{
+			"type":"Sphere",
+			"intensity":1,
+			"radiance":"Texture"
+		}
+	},
 	"instances":{
 		"cameras":{
 			"Camera_instance":{
@@ -94,7 +113,13 @@
 		"shapes":{},
 		"particles":{},
 		"delta_lights":{},
-		"env_lights":{}
+		"env_lights":{
+			"Env Light Instance":{
+				"transform":"Transform",
+				"light":"Env Light",
+				"visible":true
+			}
+		}
 	}
 },"animator":{"FORMAT":"js3d-v1",
 "splines":{}}}

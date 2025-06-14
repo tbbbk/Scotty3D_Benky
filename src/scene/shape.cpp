@@ -34,7 +34,7 @@ PT::Trace Sphere::hit(Ray ray) const {
     ret.origin = ray.point;
 
 	Vec3 o = ray.point;
-	Vec3 d = ray.dir.unit();
+	Vec3 d = ray.dir;
 
 	float a = d.norm_squared();
 	float b = 2.0f * dot(o, d);
@@ -42,7 +42,7 @@ PT::Trace Sphere::hit(Ray ray) const {
 
 	float D = powf(b, 2) - 4.0f * a * c;
 
-	if (D <= 0) {
+	if (D < 0) {
 		ret.hit = false;
 		return ret;
 	}

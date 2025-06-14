@@ -115,16 +115,26 @@ struct BBox {
 		if (t_0z > t_min) t_min = t_0z;
 		if (t_1z < t_max) t_max = t_1z;
 
-		if (t_min > times.x && t_min < times.y) {
-			times.x = t_min;
-			return true;
-		} 
-		if (t_max < times.y && t_max > times.x) {
-			times.y = t_max;
-			return true;
-		}
+		// if (t_min > times.x && t_min < times.y) {
+		// 	times.x = t_min;
+		// 	return true;
+		// } 
+		// if (t_max < times.y && t_max > times.x) {
+		// 	times.y = t_max;
+		// 	return true;
+		// }
 
-		return false;
+		// return false;
+		float intersection_start = std::max(t_min, times.x);
+		float intersection_end = std::min(t_max, times.y);
+
+		if (intersection_start <= intersection_end) {
+			times.x = intersection_start;
+			times.y = intersection_end;
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	/// Get the eight corner points of the bounding box
