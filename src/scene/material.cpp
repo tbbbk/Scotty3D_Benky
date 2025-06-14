@@ -72,6 +72,10 @@ Spectrum Lambertian::evaluate(Vec3 out, Vec3 in, Vec2 uv) const {
     // Compute the ratio of outgoing/incoming radiance when light from in_dir
     // is reflected through out_dir: (albedo / PI_F) * cos(theta).
     // Note that for Scotty3D, y is the 'up' direction.
+	if (in.y <= 0.0f) {
+		// If the incoming direction is not above the surface, return zero
+		return Spectrum{0.0f, 0.0f, 0.0f};
+	}
 	Spectrum p = (albedo.lock()->evaluate(uv) / PI_F) * in.y;
 
     return p;

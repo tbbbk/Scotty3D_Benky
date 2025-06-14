@@ -42,7 +42,7 @@ PT::Trace Sphere::hit(Ray ray) const {
 
 	float D = powf(b, 2) - 4.0f * a * c;
 
-	if (D <= 0) {
+	if (D < 0) {
 		ret.hit = false;
 		return ret;
 	}
