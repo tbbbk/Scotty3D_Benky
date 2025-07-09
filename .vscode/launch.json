@@ -7,8 +7,8 @@
             "request": "launch",
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
-                // "--run-tests",
-                // "a3.task3.bvh.hit.simple.sphere"
+                "--run-tests",
+                "a4.task2.step_ik.single_joint.single_target"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
