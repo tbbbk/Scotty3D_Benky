@@ -8,7 +8,7 @@
             "program": "${workspaceFolder}/Scotty3D.exe",
             "args": [
                 "--run-tests",
-                "a4.task1.spline.at.simple"
+                "a4.task2.step_ik.single_joint.single_target"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

@@ -48,7 +48,14 @@ std::vector< Mat4 > Skeleton::bind_pose() const {
 	for (auto const &bone : bones) {
 		(void)bone; //avoid complaints about unused bone
 		//placeholder -- your code should actually compute the correct transform:
-		bind.emplace_back(Mat4::I);
+		if (bone.parent == -1U) {
+			//base bone (no parent) is at the skeleton's base position:
+			bind.emplace_back(Mat4::translate(base));
+			continue;
+		} 
+		//child bone is at the parent's tip:
+		// parent's bind transform is in bind[bone.parent]:
+		bind.emplace_back(bind[bone.parent] * Mat4::translate(bones[bone.parent].extent));
 	}
 
 	assert(bind.size() == bones.size()); //should have a transform for every bone.
@@ -57,17 +64,37 @@ std::vector< Mat4 > Skeleton::bind_pose() const {
 
 std::vector< Mat4 > Skeleton::current_pose() const {
     //A4T2a: bone-to-skeleton transformations in the current pose
-
+	std::vector< Mat4 > pose;
+	pose.reserve(bones.size());
 	//Similar to bind_pose(), but takes rotation from Bone::pose into account.
 	// (and translation from Skeleton::base_offset!)
 
 	//You'll probably want to write a loop similar to bind_pose().
-
 	//Useful functions:
 	//Bone::compute_rotation_axes() will tell you what axes (in local bone space) Bone::pose should rotate around.
 	//Mat4::angle_axis(angle, axis) will produce a matrix that rotates angle (in degrees) around a given axis.
+	for (auto const &bone : bones) {
+		Mat4 parent_transform;
+		if (bone.parent == -1U) {
+			//base bone (no parent) is at the skeleton's base position:
+			parent_transform = Mat4::translate(base + base_offset);
+		} else {
+			//child bone is at the parent's tip:
+			parent_transform = pose[bone.parent];
+		}
 
-	return std::vector< Mat4 >(bones.size(), Mat4::I);
+		Mat4 T = Mat4::translate((bone.parent == -1U) ? Vec3(.0f) : bones[bone.parent].extent);
+
+		Vec3 x_axis, y_axis, z_axis;
+		bone.compute_rotation_axes(&x_axis, &y_axis, &z_axis);
+		Mat4 rotation_x = Mat4::angle_axis(bone.pose.x, x_axis);
+		Mat4 rotation_y = Mat4::angle_axis(bone.pose.y, y_axis);
+		Mat4 rotation_z = Mat4::angle_axis(bone.pose.z, z_axis);
+		pose.emplace_back(parent_transform * T * rotation_z * rotation_y * rotation_x);
+	}
+
+	assert(pose.size() == bones.size()); //should have a transform for every bone.
+	return pose;
 
 }
 
@@ -81,6 +108,40 @@ std::vector< Vec3 > Skeleton::gradient_in_current_pose() const {
 
 	//TODO: loop over handles and over bones in the chain leading to the handle, accumulating gradient contributions.
 	//remember bone.compute_rotation_axes() -- should be useful here, too!
+	std::vector<Mat4> current_pose = this->current_pose();
+
+	for (auto const &handle : handles) {
+		if (!handle.enabled) {
+			continue; //skip if handle is not enabled
+		}
+		for (BoneIndex b = handle.bone; b != -1U; b = bones[b].parent) {
+			Bone bone = bones[b];
+			Vec3 x_axis, y_axis, z_axis;  // the axis is in **local space**
+			bone.compute_rotation_axes(&x_axis, &y_axis, &z_axis);
+			
+			Vec3 loss = (current_pose[handle.bone] * Vec4(bone.extent, 1.f)).xyz() - handle.target;
+
+			// The bone's beginning
+			Vec4 r = current_pose[handle.bone] * Vec4(.0f, .0f, .0f, 1.0f);
+			Vec4 p = current_pose[handle.bone] * Vec4(bone.extent, 1.0f);
+			
+			Vec4 x_axis_skeleton_space = current_pose[handle.bone] * Vec4(1.f, 0.f, 0.f, 0.f);
+			Vec3 dp_drx = cross(x_axis_skeleton_space.xyz(), (p - r).xyz());
+
+			Mat4 rotation_x_reverse = Mat4::transpose(Mat4::angle_axis(bone.pose.x, x_axis));
+			Vec4 y_axis_skeleton_space = current_pose[handle.bone] * rotation_x_reverse * Vec4(0.f, 1.f, 0.f, 0.f);
+			Vec3 dp_dry = cross(y_axis_skeleton_space.xyz(), (p - r).xyz());
+
+			Mat4 rotation_y_reverse = Mat4::transpose(Mat4::angle_axis(bone.pose.y, y_axis));
+			Vec4 z_axis_skeleton_space = current_pose[handle.bone] * rotation_y_reverse * rotation_x_reverse * Vec4(0.f, 0.f, 1.f, 0.f);
+			Vec3 dp_drz = cross(z_axis_skeleton_space.xyz(), (p - r).xyz());
+
+			float dx = dot(loss, dp_drx);
+			float dy = dot(loss, dp_dry);
+			float dz = dot(loss, dp_drz);
+			gradient[handle.bone] += Vec3{dx, dy, dz};
+		}
+	}
 
 	assert(gradient.size() == bones.size());
 	return gradient;
@@ -90,10 +151,29 @@ bool Skeleton::solve_ik(uint32_t steps) {
 	//A4T2b - gradient descent
 	//check which handles are enabled
 	//run `steps` iterations
-	
-	//call gradient_in_current_pose() to compute d loss / d pose
-	//add ...
+	float tao = 0.05f;
+	for (uint32_t step = 0; step < steps; ++step) {
+		//call gradient_in_current_pose() to compute d loss / d pose
+		//add ...
+		std::vector< Vec3 > gradient = gradient_in_current_pose();
 
+		bool at_local_minimum = true; //assume we are at a local minimum
+		for (auto const &g : gradient) {
+			if (std::abs(g.x) >= 0.0001 || std::abs(g.y) >= 0.0001 || std::abs(g.z) >= 0.0001) {
+				at_local_minimum = false; //if any component of the gradient is not near-zero, we are not at a local minimum
+				break;
+			}
+		}
+
+		if (at_local_minimum) {
+			return true; //if we are at a local minimum, return 'true'
+		}
+
+		for (BoneIndex b = 0; b < bones.size(); ++b) {
+			bones[b].pose -= gradient[b] * tao; 
+		}
+	}
+	
 	//if at a local minimum (e.g., gradient is near-zero), return 'true'.
 	//if run through all steps, return `false`.
 	return false;
