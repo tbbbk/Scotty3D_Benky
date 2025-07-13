@@ -185,8 +185,13 @@ Vec3 Skeleton::closest_point_on_line_segment(Vec3 const &a, Vec3 const &b, Vec3 
     // Return the closest point to 'p' on the line segment from a to b
 
 	//Efficiency note: you can do this without any sqrt's! (no .unit() or .norm() is needed!)
+	Vec3 ab = b - a; // vector from a to b
+	Vec3 ap = p - a; // vector from p to a
+	float x = dot(ap, ab) / dot(ab, ab);
 
-    return Vec3{};
+	x = std::clamp(x, 0.0f, 1.0f); // clamp x to [0, 1] to ensure we stay on the segment
+
+    return Vec3{a + ab * x}; // return the point on the line segment
 }
 
 void Skeleton::assign_bone_weights(Halfedge_Mesh *mesh_) const {
@@ -201,6 +206,32 @@ void Skeleton::assign_bone_weights(Halfedge_Mesh *mesh_) const {
 	//be sure to use bone positions in the bind pose (not the current pose!)
 
 	//you should fill in the helper closest_point_on_line_segment() before working on this function
+	
+	std::vector<Mat4> bind_to_pose = bind_pose(); //make sure bind pose is computed
+	for (auto &v : mesh.vertices) {
+		float weight_sum = 0.0f; // sum of weights for this vertex
+		std::vector< std::pair< BoneIndex, float > > new_weights; // new weights to be assigned
+
+		v.bone_weights.clear(); // clear old weights
+		for (BoneIndex bone_idx = 0; bone_idx < bones.size(); ++bone_idx) {
+			const Bone &bone = bones[bone_idx];
+			Vec3 start = (bind_to_pose[bone_idx] * Vec4(.0f, .0f, .0f, 1.0f)).xyz(); //start of the bone in the bind pose
+			Vec3 end = (bind_to_pose[bone_idx] * Vec4(bone.extent, 1.0f)).xyz(); //end of the bone in the bind pose
+			Vec3 p = v.position; //position of the vertex in the bind pose
+			Vec3 closest = closest_point_on_line_segment(start, end, p); //closest point
+			float weight = std::max(0.f, bone.radius - (closest - p).norm()) / bone.radius; //weight is influenced by distance to the bone
+			new_weights.emplace_back(bone_idx, weight);
+			weight_sum += weight; // accumulate the weight
+		}
+		if (weight_sum < EPS_F) {
+			continue; // if no weights, skip this vertex
+		}
+		for (auto &[bone_idx, weight] : new_weights) {
+			if (weight <= EPS_F) continue;
+			weight /= weight_sum;
+			v.bone_weights.emplace_back(Halfedge_Mesh::Vertex::Bone_Weight{bone_idx, weight}); // assign the normalized weight
+		}
+	}
 
 }
 
@@ -222,17 +253,33 @@ Indexed_Mesh Skeleton::skin(Halfedge_Mesh const &mesh, std::vector< Mat4 > const
 	skinned_normals.reserve(mesh.halfedges.size());
 
 	//(you will probably want to precompute some bind-to-current transformation matrices here)
-
 	for (auto vi = mesh.vertices.begin(); vi != mesh.vertices.end(); ++vi) {
-		skinned_positions.emplace(vi, vi->position); //PLACEHOLDER! Replace with code that computes the position of the vertex according to vi->position and vi->bone_weights.
+		Mat4 transform = Mat4::Zero;
+		for (auto const &bw : vi->bone_weights) {
+			transform += bw.weight * current[bw.bone] * Mat4::inverse(bind[bw.bone]);
+		}
 		//NOTE: vertices with empty bone_weights should remain in place.
+		if (vi->bone_weights.size() == 0) {
+			skinned_positions.emplace(vi, vi->position);
+		} else {
+			skinned_positions.emplace(vi, (transform * Vec4(vi->position, 1.0f)).xyz()); //PLACEHOLDER! Replace with code that computes the position of the vertex according to vi->position and vi->bone_weights.
+		}
 
 		//circulate corners at this vertex:
+		Mat4 L_i = transform;
+		L_i[0][3] = .0f; //make sure translation is zero
+		L_i[1][3] = .0f; //make sure translation is zero
+		L_i[2][3] = .0f; //make sure translation is zero
+		Mat4 N_i = Mat4::transpose(Mat4::inverse(L_i));
 		auto h = vi->halfedge;
 		do {
 			//NOTE: could skip if h->face->boundary, since such corners don't get emitted
-
-			skinned_normals.emplace(h, h->corner_normal); //PLACEHOLDER! Replace with code that properly transforms the normal vector! Make sure that you normalize correctly.
+			if (h->face->boundary) {
+				skinned_normals.emplace(h, h->corner_normal);
+				continue; //skip boundary faces
+			}
+			Vec3 new_corner_normal = (N_i * Vec4(h->corner_normal, 0.0f)).xyz().unit(); //transform normal vector
+			skinned_normals.emplace(h, new_corner_normal); //PLACEHOLDER! Replace with code that properly transforms the normal vector! Make sure that you normalize correctly.
 
 			h = h->twin->next;
 		} while (h != vi->halfedge);
@@ -241,10 +288,35 @@ Indexed_Mesh Skeleton::skin(Halfedge_Mesh const &mesh, std::vector< Mat4 > const
 	//---- step 2: transform into an indexed mesh ---
 
 	//Hint: you should be able to use the code from Indexed_Mesh::from_halfedge_mesh (SplitEdges version) pretty much verbatim, you'll just need to fill in the positions and normals.
+	std::vector<Indexed_Mesh::Vert> verts;
+	std::vector<Indexed_Mesh::Index> idxs;
 
-	Indexed_Mesh result = Indexed_Mesh::from_halfedge_mesh(mesh, Indexed_Mesh::SplitEdges); //PLACEHOLDER! you'll probably want to copy the SplitEdges case from this function o'er here and modify it to use skinned_positions and skinned_normals.
+	for (Halfedge_Mesh::FaceCRef f = mesh.faces.begin(); f != mesh.faces.end(); f++) {
+		if (f->boundary) continue;
 
-	return result;
+		//every corner gets its own copy of a vertex:
+		uint32_t corners_begin = static_cast<uint32_t>(verts.size());
+		Halfedge_Mesh::HalfedgeCRef h = f->halfedge;
+		do {
+			Indexed_Mesh::Vert vert;
+			vert.pos = skinned_positions.at(h->vertex);
+			vert.norm = skinned_normals.at(h);
+			vert.uv = h->corner_uv;
+			vert.id = f->id;
+			verts.emplace_back(vert);
+			h = h->next;
+		} while (h != f->halfedge);
+		uint32_t corners_end = static_cast<uint32_t>(verts.size());
+
+		//divide face into a triangle fan:
+		for (size_t i = corners_begin + 1; i + 1 < corners_end; i++) {
+			idxs.emplace_back(corners_begin);
+			idxs.emplace_back(static_cast<uint32_t>(i));
+			idxs.emplace_back(static_cast<uint32_t>(i+1));
+		}
+	}
+
+	return Indexed_Mesh(std::move(verts), std::move(idxs));
 }
 
 void Skeleton::for_bones(const std::function<void(Bone&)>& f) {

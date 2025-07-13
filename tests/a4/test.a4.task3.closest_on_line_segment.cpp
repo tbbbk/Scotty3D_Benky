@@ -39,3 +39,16 @@ Test test_a4_task3_closest_point_on_line_segment_same_direction_after_end(
 			throw Test::error("The closest point should be the end point!");
 		}
 	});
+
+Test test_a4_task3_closest_point_on_line_segment_simple(
+	"a4.task3.closest_point_on_line_segment.simple", []() {
+		Vec3 start = Vec3(0, 0, 0);
+		Vec3 end = Vec3(1, 0, 0);
+		Vec3 point = Vec3(0.5f, 1.0f, 1.0f);
+
+		Vec3 expected = Vec3(0.5f, 0.f, 0.f);
+		Vec3 actual = Skeleton::closest_point_on_line_segment(start, end, point);
+		if (Test::differs(expected, actual)) {
+			throw Test::error("The closest point is wrong!");
+		}
+	});
