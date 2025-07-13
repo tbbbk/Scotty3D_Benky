@@ -1,3 +1,5 @@
+<h1 align="center" style="font-size: 64px;">That's a Wrap! 🥳🚀</h1>
+
 # Scotty3D
 
 Scotty3D is the 3D modeling, rendering, and animation package that students complete as part of [15-362/662 Computer Graphics](http://15362.courses.cs.cmu.edu) at Carnegie Mellon University.
