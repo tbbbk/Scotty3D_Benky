@@ -7,18 +7,75 @@ bool Particles::Particle::update(const PT::Aggregate &scene, Vec3 const &gravity
 
 	// Compute the trajectory of this particle for the next dt seconds.
 
-	// (1) Build a ray representing the particle's path as if it travelled at constant velocity.
+	float t_remaining = dt;
 
-	// (2) Intersect the ray with the scene and account for collisions. Be careful when placing
-	// collision points using the particle radius. Move the particle to its next position.
+	while (t_remaining > EPS_F) {
+		// (1) Build a ray representing the particle's path as if it travelled at constant velocity.
+		Ray ray = Ray(position, velocity.unit());
 
-	// (3) Account for acceleration due to gravity after updating position.
+		// (2) Intersect the ray with the scene and account for collisions. Be careful when placing
+		// collision points using the particle radius. Move the particle to its next position.
+		PT::Trace trace = scene.hit(ray);
 
-	// (4) Repeat until the entire time step has been consumed.
+		if (!trace.hit) {
+			t_remaining = std::min(t_remaining, age);
+			position += velocity * t_remaining;
+			velocity += gravity * t_remaining;
+			age -= t_remaining;
+			if (age < EPS_F) {
+				return false; //particle is dead
+			}
+			break;
+		}
 
-	// (5) Decrease the particle's age and return 'false' if it should be removed.
+		if (dot(trace.normal, velocity) > 0.f) {
+			trace.normal = -trace.normal;
+		}
 
-	return false;
+		float cos_theta = dot(-velocity, trace.normal) / velocity.norm();
+		const float eps = 1e-6f;
+		if (cos_theta <= eps) {
+			t_remaining = std::min(t_remaining, age);
+			position += velocity * t_remaining;
+			velocity += gravity * t_remaining;
+			age -= t_remaining;
+			if (age < EPS_F) {
+				return false; //particle is dead
+			}
+			break;
+		}
+		float gap = radius / cos_theta;
+		float hit_distance = trace.distance - gap;
+
+		t_remaining = std::min(t_remaining, age);
+		bool hit = t_remaining * velocity.norm() >= hit_distance;
+		float used_time = hit ? (hit_distance / velocity.norm()) : t_remaining;
+		if (hit_distance < 0.0f) {
+			// If the hit distance is negative, it means the ray is already inside the object.
+			// In this case, we can just move the particle to the collision point.
+			used_time = 0.0f;
+			hit = true; // we still hit the object, just inside it
+		}
+
+		if (hit && trace.hit) {
+			position += velocity * used_time; //move to collision point
+			velocity = 2 * dot(-velocity, trace.normal.unit()) * trace.normal.unit() + velocity; //reflect
+		} else {
+			position += velocity * used_time;
+		}
+		// (3) Account for acceleration due to gravity after updating position.
+		Vec3 acceleration = gravity;
+		velocity += acceleration * used_time;
+		// (4) Repeat until the entire time step has been consumed.
+		t_remaining -= used_time;
+		// (5) Decrease the particle's age and return 'false' if it should be removed.
+		age -= used_time;
+		if (age < EPS_F) {
+			return false; //particle is dead
+		}
+	}
+
+	return true;
 }
 
 void Particles::advance(const PT::Aggregate& scene, const Mat4& to_world, float dt) {
